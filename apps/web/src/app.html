@@ -19,6 +19,7 @@
 <script type="module" src="/js/app.js"></script>
 </head>
 <body class="app">
+<canvas class="space" id="space" aria-hidden="true"></canvas>
 <aside class="side" id="side">
   <a class="brand" href="/"><span data-mark></span>Polaris<small data-net-tag>Testnet</small></a>
   <nav class="side-nav" aria-label="Instruments">
@@ -40,17 +41,29 @@
 <div class="main">
   <header class="top">
     <button class="icon-btn side-toggle" id="sideToggle" aria-label="Menu" data-icon="menu"></button>
-    <h1 class="top-title"><span class="ps1" id="whoami">guest@polaris</span><span class="path">:~/<span id="pageTitle">radar</span>$</span><span class="caret"></span></h1>
+    <h1 class="top-title"><button class="prompt-btn" id="qcOpen" aria-controls="qc" aria-expanded="false" title="Open the shell ( / )"><span class="ps1" id="whoami">guest@polaris</span><span class="path">:~/<span id="pageTitle">radar</span>$</span><span class="caret"></span><span class="prompt-hint">type a command</span></button></h1>
     <div class="nav-right">
+      <button class="icon-btn" id="tourBtn" aria-label="Show the walkthrough" title="Walkthrough">?</button>
       <button class="icon-btn" id="theme" aria-label="Switch theme"></button>
       <button class="btn btn-primary btn-sm" id="walletBtn"></button>
     </div>
   </header>
 
+  <!-- drop-down shell -->
+  <div class="qc term" id="qc" role="dialog" aria-label="Polaris shell" aria-hidden="true">
+    <div class="term-bar"><span>tty2 · polaris shell · esc closes</span><span class="term-state"></span></div>
+    <div class="term-out"></div>
+    <form class="term-in" autocomplete="off"><label class="ps1" for="qcIn">$</label><input id="qcIn" spellcheck="false" autocapitalize="off" placeholder="type help · tab completes · ↑ ↓ history"></form>
+    <div class="term-chips">
+      <button class="chip" data-cmd="help">help</button><button class="chip" data-cmd="top 5">top 5</button><button class="chip" data-cmd="vaults">vaults</button>
+      <button class="chip" data-cmd="deposit 1000">deposit 1000</button><button class="chip" data-cmd="xp 7">xp 7</button><button class="chip" data-cmd="tour">tour</button><button class="chip" data-cmd="clear">clear</button>
+    </div>
+  </div>
+
   <!-- ================= radar ================= -->
   <section class="view" id="v-radar">
     <div class="stats">
-      <div class="stat card"><span class="label">Born in the last hour</span><b class="num sk" id="rHour">12</b><small class="dim" id="rHourD">newborn tokens</small></div>
+      <div class="stat card"><span class="label">Born in the last hour</span><b class="num sk" id="rHour">12</b><small class="dim" id="rHourD">newborn tokens</small><div class="spark" id="rSpark" aria-label="Tokens born per hour, last 24 hours"></div></div>
       <div class="stat card"><span class="label">Born in the last 24h</span><b class="num sk" id="rDay">120</b><small class="dim">first mint seen on-chain</small></div>
       <div class="stat card"><span class="label">Strongest pull</span><b class="num sk" id="rTop">$SIGNAL</b><small class="dim" id="rTopD">North Score</small></div>
       <div class="stat card"><span class="label">Scanner head</span><b class="num sk" id="rHead">152,700,000</b><small class="dim">mint logs read to this block</small></div>
@@ -97,6 +110,12 @@
         <div class="vdetail" id="vDetail"></div>
         <div class="chart" id="vChart"><svg preserveAspectRatio="none"></svg><div class="chart-tip" hidden></div></div>
       </div>
+      <div class="vault-side">
+      <div class="panel orbit-panel">
+        <div class="panel-head"><div><p class="label">Orbit</p><h2 class="h3">Closer and faster pays more</h2></div></div>
+        <svg class="orbit" id="orbit" viewBox="-170 -170 340 340" aria-label="North Vaults orbiting Polaris"></svg>
+        <p class="label orbit-cap">ring = rank · speed = APY · size = deposits · click a vault</p>
+      </div>
       <div class="panel form">
         <div class="seg wide" id="modeSeg"><button data-m="dep" class="on">Deposit</button><button data-m="wd">Withdraw</button></div>
         <label class="field">
@@ -110,6 +129,7 @@
           <div><b>Need pUSD</b><span class="dim">Claim 10,000 testnet pUSD once a day</span></div>
           <button class="btn btn-ghost btn-sm" id="dripBtn">Claim</button>
         </div>
+      </div>
       </div>
     </div>
   </section>
@@ -135,6 +155,7 @@
       <div class="panel constel">
         <div class="panel-head"><div><p class="label">This week</p><h2 class="h3">Your constellation</h2></div></div>
         <svg class="constel-svg" id="constel" viewBox="0 0 560 220" aria-label="Your streak as a constellation"></svg>
+        <div class="xpc"><div class="xpc-head"><span class="label">XP per ping by streak day</span><span class="label" id="xpcRead">hover a day</span></div><div class="xpc-bars" id="xpCurve"></div></div>
         <div class="xp-table">
           <div><span class="label">Day 1</span><b class="num">10 XP</b></div>
           <div><span class="label">Day 7</span><b class="num">40 XP</b></div>
@@ -152,7 +173,7 @@
   <footer class="status" aria-label="Status">
     <span class="st-mode">polaris</span>
     <nav class="st-tabs" aria-label="Views"><a href="#radar" data-tab="radar">1:radar</a><a href="#vaults" data-tab="vaults">2:vaults</a><a href="#beacon" data-tab="beacon">3:beacon</a></nav>
-    <span class="st-keys">j/k select · 1-3 switch</span>
+    <span class="st-keys">/ shell · j/k select · 1-3 switch · ? tour</span>
     <span class="st-net"><span class="dot live" id="netDot"></span><span id="netName">Robinhood Chain</span></span>
     <span class="num" id="netBlock">syncing</span>
     <span class="num st-lat" id="stLat">rpc --</span>

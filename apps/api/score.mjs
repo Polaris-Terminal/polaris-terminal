@@ -10,6 +10,16 @@ export function northScore(t, now = Date.now(), windowMs = 48 * 3600e3) {
   return { score: Math.max(1, Math.min(99, Math.round(raw * 100))), f: { holders, activity, fresh, trust } };
 }
 
+// Births per hour for the last `hours` hours, oldest first; the last bucket is the hour that ends now.
+export function hourly(bornAts, now = Date.now(), hours = 24) {
+  const out = new Array(hours).fill(0);
+  for (const b of bornAts) {
+    const k = Math.floor((now - b) / 3600e3);
+    if (k >= 0 && k < hours) out[hours - 1 - k]++;
+  }
+  return out;
+}
+
 // Vault score used by the terminal (same shape as the yield ranking it was modelled on):
 // APY discounted by deposit depth and withdrawable liquidity, both on a log scale.
 export function vaultScore(v) {

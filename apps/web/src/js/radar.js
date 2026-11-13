@@ -5,9 +5,10 @@ import { esc, age, int } from "./core.js";
 const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const bearing = (addr) => (parseInt(addr.slice(2, 10), 16) % 3600) / 10 || 7; // degrees, never 0
 
-export function mountRadar(canvas, { onSelect, tip } = {}) {
+export function mountRadar(canvas, { onSelect, onHover, tip } = {}) {
   const ctx = canvas.getContext("2d");
-  let tokens = [], selected = null, hover = null, sweep = 0, w = 0, h = 0, dpr = 1, blips = [];
+  let tokens = [], selected = null, hover = null, linked = null, sweep = 0, w = 0, h = 0, dpr = 1, blips = [], lockAt = 0;
+  const born = new Map(); // address -> when it first showed up on an already running radar
   let palette = {};
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -67,9 +68,19 @@ export function mountRadar(canvas, { onSelect, tip } = {}) {
       ctx.restore();
     }
 
+    // newborn ripples
+    const now = performance.now();
+    for (const b of blips) {
+      const age = (now - (born.get(b.t.address) ?? -1e9)) / 1600;
+      if (age < 0 || age >= 1) continue;
+      ctx.strokeStyle = palette.accent; ctx.globalAlpha = 1 - age;
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.s + 4 + age * 30, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
     // blips
     for (const b of blips) {
-      const on = b.t === selected || b.t === hover;
+      const on = b.t === selected || b.t === hover || b.t === linked;
       const a = Math.atan2(b.y - cy, b.x - cx) + Math.PI / 2;
       const since = ((sweep - a) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
       const lit = reduce ? 0.85 : 0.45 + 0.55 * Math.max(0, 1 - since / 2.2);
@@ -85,6 +96,27 @@ export function mountRadar(canvas, { onSelect, tip } = {}) {
       }
     }
     ctx.globalAlpha = 1;
+
+    // lock-on: a bearing line from Polaris and brackets that close in, so distance reads as score
+    const aim = blips.find((b) => b.t === (hover || linked)) || blips.find((b) => b.t === selected);
+    if (aim) {
+      ctx.save();
+      ctx.strokeStyle = palette.accent; ctx.setLineDash([3, 4]); ctx.globalAlpha = 0.7;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(aim.x, aim.y); ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+      const k = aim.t === selected && !reduce ? Math.min(1, (now - lockAt) / 380) : 1, e = 1 - (1 - k) ** 3;
+      const g = aim.s + 7 + (1 - e) * 26, arm = 6;
+      ctx.lineWidth = 1.5; ctx.shadowColor = palette.accent; ctx.shadowBlur = 8;
+      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        const x = aim.x + sx * g, y = aim.y + sy * g;
+        ctx.beginPath(); ctx.moveTo(x - sx * arm, y); ctx.lineTo(x, y); ctx.lineTo(x, y - sy * arm); ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = palette.accent; ctx.font = "11px 'Geist Mono', monospace";
+      ctx.fillText(`NS ${aim.t.score}`, (cx + aim.x) / 2 + 6, (cy + aim.y) / 2 - 6);
+      ctx.restore();
+    }
+
     // Polaris at the centre
     ctx.fillStyle = palette.ink;
     ctx.beginPath();
@@ -112,6 +144,7 @@ export function mountRadar(canvas, { onSelect, tip } = {}) {
   };
   canvas.addEventListener("pointermove", (e) => {
     const b = find(e);
+    if ((b?.t || null) !== hover) onHover?.(b?.t || null);
     hover = b?.t || null;
     canvas.style.cursor = b ? "pointer" : "";
     if (tip) {
@@ -122,11 +155,16 @@ export function mountRadar(canvas, { onSelect, tip } = {}) {
     }
     if (reduce) draw();
   });
-  canvas.addEventListener("pointerleave", () => { hover = null; if (tip) tip.hidden = true; });
+  canvas.addEventListener("pointerleave", () => { if (hover) onHover?.(null); hover = null; if (tip) tip.hidden = true; });
   canvas.addEventListener("click", (e) => { const b = find(e); if (b) { selected = b.t; onSelect?.(b.t); if (reduce) draw(); } });
 
   return {
-    set(list) { tokens = list; if (!raf) raf = requestAnimationFrame(loop); },
-    select(t) { selected = t; if (reduce) draw(); },
+    set(list) {
+      if (tokens.length) { const had = new Set(tokens.map((t) => t.address)); list.forEach((t) => had.has(t.address) || born.set(t.address, performance.now())); }
+      tokens = list;
+      if (!raf) raf = requestAnimationFrame(loop);
+    },
+    select(t) { if (t?.address !== selected?.address) lockAt = performance.now(); selected = t; if (reduce) draw(); },
+    link(t) { linked = t; if (reduce) draw(); }, // hover from outside the canvas, e.g. the table
   };
 }

@@ -17,7 +17,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Doto:wght@600..900&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/base.css">
 <link rel="stylesheet" href="/css/landing.css">
-<script>try{var t=localStorage.getItem("polaris-theme");t&&(document.documentElement.dataset.theme=JSON.parse(t));if(sessionStorage.getItem("polaris-boot")||matchMedia("(prefers-reduced-motion: reduce)").matches)document.documentElement.classList.add("booted")}catch(e){}</script>
+<script>try{var t=localStorage.getItem("polaris-theme");t&&(document.documentElement.dataset.theme=JSON.parse(t));document.documentElement.classList.add(sessionStorage.getItem("polaris-boot")||matchMedia("(prefers-reduced-motion: reduce)").matches?"booted":"splashing")}catch(e){}</script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" defer></script>
@@ -26,16 +26,20 @@
 </head>
 <body class="landing">
 
-<!-- boot log, first visit of a session only -->
-<div class="boot" id="boot" aria-hidden="true">
-  <pre class="ascii">██████╗  ██████╗ ██╗      █████╗ ██████╗ ██╗███████╗
+<!-- splash, first visit of a session only; the planet in its reticle is the real one behind the page -->
+<div class="splash" id="splash" aria-hidden="true">
+  <canvas class="splash-rain"></canvas>
+  <div class="splash-reticle"><i class="rt-scan"></i><i class="rt-ring"></i><i class="rt-ticks"></i><span class="rt-lock"></span>
+    <span class="rt-tag rt-n">target · polaris</span><span class="rt-tag rt-s">α 02h 31m 49s · δ +89° 15′ 51″</span></div>
+  <div class="splash-top"><pre class="ascii">██████╗  ██████╗ ██╗      █████╗ ██████╗ ██╗███████╗
 ██╔══██╗██╔═══██╗██║     ██╔══██╗██╔══██╗██║██╔════╝
 ██████╔╝██║   ██║██║     ███████║██████╔╝██║███████╗
 ██╔═══╝ ██║   ██║██║     ██╔══██║██╔══██╗██║╚════██║
 ██║     ╚██████╔╝███████╗██║  ██║██║  ██║██║███████║
-╚═╝      ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚══════╝</pre>
-  <div class="boot-log"></div>
-  <p class="label boot-skip">press any key to skip</p>
+╚═╝      ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚══════╝</pre><p class="label">signal terminal · robinhood chain</p></div>
+  <div class="splash-log"></div>
+  <div class="splash-meter"><span class="splash-state">acquiring signal</span><span class="splash-bar"><i></i></span><b class="num splash-pct">0%</b></div>
+  <p class="label splash-skip">press any key to skip</p>
 </div>
 
 <!-- the radar planet lives behind the whole page -->
@@ -260,7 +264,6 @@
       <h2 class="display ticker reveal">$POLARIS</h2>
       <div class="globe-slot final-slot" data-globe-slot></div>
       <p class="lead reveal">Fixed supply of 1,000,000,000. Hold 10,000 to boost every Beacon ping by half</p>
-      <div class="ca card spot reveal"><span class="label">Contract</span><span class="num" id="caAddr">0x</span><button class="icon-btn" id="caCopy" aria-label="Copy contract address" data-icon="copy"></button><a class="icon-btn" id="caLink" target="_blank" rel="noopener" aria-label="Open in explorer" data-icon="ext"></a></div>
       <div class="hero-cta reveal">
         <a class="btn btn-primary" href="/app">Open terminal<svg class="i arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
         <a class="btn btn-ghost" href="/docs">Read the field manual</a>
@@ -273,7 +276,7 @@
     <div class="wrap">
       <h2 class="display band-h">Logbook</h2>
       <div class="logs" id="logs">
-        <article class="log reveal"><span class="label" data-date></span><h3>First light on testnet</h3><p>Seven contracts deployed behind PolarisProxy on Robinhood Chain Testnet, each with verified source on the explorer</p></article>
+        <article class="log reveal"><span class="label" data-date></span><h3>First light on testnet</h3><p>The Polaris contracts deployed behind PolarisProxy on Robinhood Chain Testnet, each with verified source on the explorer</p></article>
         <article class="log reveal"><span class="label" data-date></span><h3>Drift Radar online</h3><p>The scanner reads every ERC-20 mint, dates each token from its creation transaction and scores it live</p></article>
         <article class="log reveal"><span class="label" data-date></span><h3>Vega, Sirius, Altair</h3><p>Three North Vaults streaming pUSD yield, ranked by the North Pick and listed through PolarisRegistry</p></article>
         <article class="log next reveal"><span class="label">Next</span><h3>Polaris Terminal V1.0</h3><p>Mainnet launch on Robinhood Chain with $POLARIS and curated USDG vaults</p></article>

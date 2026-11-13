@@ -5,8 +5,9 @@ import {
 import { lineChart, projection } from "./chart.js";
 import { loadVaults, loadBeacon } from "./chain.js";
 import { northScore } from "./score.js";
-import { scramble, decodeOnHover, cursorHud, spotlight, ripples, scrollSpy, clock, bootLog } from "./fx.js";
-import { mountConsole } from "./console.js";
+import { scramble, decodeOnHover, cursorHud, spotlight, ripples, scrollSpy, clock } from "./fx.js";
+import { splash } from "./splash.js";
+import { mountConsole, pad, meter } from "./console.js";
 
 boot();
 const net = CONFIG.testnet ? "Testnet" : "Mainnet";
@@ -25,7 +26,8 @@ scrollSpy($$(".nav-links a[href^='#']"));
 clock($("#clock"));
 
 // ---------- radar planet ----------
-let globe = null, pings = 0, drifted = [];
+let globe = null, pings = 0, drifted = [], planetLoaded;
+const planetReady = new Promise((r) => (planetLoaded = r));
 const tokenTip = (t) => `<b>${esc(t.name)} · $${esc(t.symbol)}</b><span>North Score <b class="num">${t.score}</b></span><span>Born ${age(t.ageMin)} ago · ${int(t.holders) ?? "first"} holder${t.holders === 1 ? "" : "s"}</span>`;
 const globeReady = import("./globe.js")
   .then(({ mountGlobe }) => {
@@ -34,11 +36,13 @@ const globeReady = import("./globe.js")
       describe: tokenTip,
       onPing: () => tween("#pingCount", ++pings),
       onSelect: (t) => showToken(t, true),
+      onReady: planetLoaded,
+      intro: document.documentElement.classList.contains("splashing"),
     });
     if (drifted.length) globe.setTokens(drifted);
     return globe;
   })
-  .catch((e) => { console.warn("webgl", e); $("#globeLayer").classList.add("off"); $("#globeHint").remove(); $("#globeTarget").remove(); });
+  .catch((e) => { console.warn("webgl", e); planetLoaded(); $("#globeLayer").classList.add("off"); $("#globeHint").remove(); $("#globeTarget").remove(); });
 $("#globePause").addEventListener("click", (e) => {
   const paused = globe?.pause();
   e.currentTarget.setAttribute("aria-pressed", String(!!paused));
@@ -46,9 +50,10 @@ $("#globePause").addEventListener("click", (e) => {
 });
 $("#globeReset").addEventListener("click", () => globe?.reset());
 
-// ---------- boot, then motion ----------
+// ---------- splash, then motion ----------
 const headBlock = () => rpc("eth_blockNumber").then((b) => Number(BigInt(b))).catch(() => null);
-const booted = bootLog($("#boot"), [
+const splashed = document.documentElement.classList.contains("splashing");
+const opened = splash($("#splash"), { ready: planetReady, lines: [
   `POLARIS TERMINAL v1.0.0 · ${CONFIG.chain.name.toLowerCase()} (${CONFIG.chain.id})`,
   `[ OK ] rpc handshake ......... ${new URL(CONFIG.chain.rpcs[0]).host}`,
   async () => { const b = await Promise.race([headBlock(), new Promise((r) => setTimeout(r, 900))]); return `[ OK ] head block ............ ${b ? "#" + b.toLocaleString("en-US") : "syncing"}`; },
@@ -56,16 +61,21 @@ const booted = bootLog($("#boot"), [
   `[ OK ] north vaults .......... ${CONFIG.vaults.length} in registry`,
   `[ OK ] beacon ................ ${short(CONFIG.beacon)}`,
   `> calibrating north .......... locked on Polaris`,
-]);
+] }).then(() => {
+  // the iris is opening: the planet leaves the reticle for the hero while the page fades in around it
+  document.documentElement.classList.remove("splashing");
+  globeReady.then((g) => g?.reveal());
+});
 
 addEventListener("load", async () => {
+  await opened;
   smoothScroll();
-  await booted;
-  globeReady.then((g) => g?.reveal());
-  scramble($(".hero-h"), 900);
+  const lag = splashed ? 0.5 : 0;
+  setTimeout(() => scramble($(".hero-h"), 900), lag * 1000);
   if (!window.gsap) return $$(".reveal").forEach((el) => el.classList.remove("reveal"));
   gsap.registerPlugin(ScrollTrigger);
-  gsap.from(".hero-copy > *", { opacity: 0, y: 12, duration: 0.6, stagger: 0.07, ease: "power3.out" });
+  gsap.from(".hero-copy > *", { opacity: 0, y: splashed ? 22 : 12, duration: splashed ? 0.9 : 0.6, delay: lag, stagger: 0.08, ease: "power3.out" });
+  if (splashed) gsap.from(".nav .wrap > *", { opacity: 0, y: -10, duration: 0.7, delay: lag, stagger: 0.08, ease: "power3.out" });
   ScrollTrigger.batch(".reveal", {
     start: "top 88%",
     once: true,
@@ -253,7 +263,6 @@ setInterval(board, 30_000);
 
 // ---------- contracts ----------
 const ROLES = {
-  token: "$POLARIS, fixed supply, ERC-20 with permit",
   beacon: "Daily check-in, streaks and XP",
   registry: "Allowlist of vaults the terminal routes into",
   dollar: "pUSD, the testnet stable with a daily drip",
@@ -277,17 +286,7 @@ function contracts(status = {}) {
 contracts();
 api("/api/contracts", (d) => contracts(Object.fromEntries((d?.contracts || []).map((c) => [c.key, c]))));
 
-// ---------- token ----------
-const tokenAddr = CONFIG.contracts.find((c) => c.key === "token")?.proxy;
-if (tokenAddr) {
-  $("#caAddr").textContent = tokenAddr;
-  $("#caLink").href = `${CONFIG.chain.explorer}/token/${tokenAddr}`;
-  $("#caCopy").addEventListener("click", (e) => copy(tokenAddr, e.currentTarget));
-}
-
 // ---------- console ----------
-const pad = (s, n) => String(s ?? "").slice(0, n).padEnd(n);
-const meter = (v, n = 16) => { const k = Math.round(Math.max(0, Math.min(1, v)) * n); return `<span class="acc">${"█".repeat(k)}</span>${"░".repeat(n - k)}`; };
 const minutes = (s) => { const m = /^(\d+(?:\.\d+)?)(m|h|d)?$/i.exec(s || ""); return m ? +m[1] * ({ h: 60, d: 1440 }[m[2]?.toLowerCase()] || 1) : NaN; };
 const HELP = [
   ["drift [n]", "newborn tokens ranked by North Score"],

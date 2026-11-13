@@ -33,7 +33,8 @@ const config = {
   chain: { ...chain, hex: "0x" + chain.id.toString(16) },
   api: process.env.API_BASE || "",
   deployedAt: dep.deployedAt,
-  contracts: Object.entries(c).map(([key, v]) => ({ key, name: v.name, proxy: v.proxy, implementation: v.implementation, version: "1.0.0" })),
+  // $POLARIS launches elsewhere; its address goes on the site only once that launch is live
+  contracts: Object.entries(c).filter(([key]) => key !== "token").map(([key, v]) => ({ key, name: v.name, proxy: v.proxy, implementation: v.implementation, version: "1.0.0" })),
   selectors: dep.selectors,
   beacon: c.beacon?.proxy,
   registry: c.registry?.proxy,

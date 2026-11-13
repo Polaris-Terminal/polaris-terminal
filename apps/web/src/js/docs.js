@@ -1,6 +1,8 @@
 import { CONFIG, $, $$, boot, smoothScroll, esc, explorerAddr } from "./core.js";
+import { mountSpace } from "./space.js";
 
 boot();
+mountSpace($("#space"));
 $$("[data-net-tag]").forEach((el) => (el.textContent = CONFIG.testnet ? "Testnet" : "Mainnet"));
 $$("[data-explorer]").forEach((a) => (a.href = CONFIG.chain.explorer));
 const row = (k, v, href) => `<div><span>${esc(k)}</span>${href ? `<a href="${href}" target="_blank" rel="noopener">${esc(v)}</a>` : `<span>${esc(v)}</span>`}</div>`;

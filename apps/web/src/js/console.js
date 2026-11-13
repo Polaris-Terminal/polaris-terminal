@@ -1,9 +1,12 @@
-// A small shell on the landing page. Commands are async functions (args, print) => void; print takes
-// HTML, so every value that comes from the chain must be escaped by the command before printing.
+// A small shell, on the landing page and inside the terminal. Commands are async functions (args, print) => void;
+// print takes HTML, so every value that comes from the chain must be escaped by the command before printing.
 import { esc } from "./core.js";
 import { sleep } from "./fx.js";
 
-export function mountConsole(root, { prompt, commands }) {
+export const pad = (s, n) => String(s ?? "").slice(0, n).padEnd(n);
+export const meter = (v, n = 16) => { const k = Math.round(Math.max(0, Math.min(1, v)) * n); return `<span class="acc">${"█".repeat(k)}</span>${"░".repeat(n - k)}`; };
+
+export function mountConsole(root, { prompt, commands }) { // prompt: a string, or a function when it changes
   const out = root.querySelector(".term-out"), form = root.querySelector("form"), input = form.querySelector("input");
   const hist = [];
   let hi = 0, busy = false;
@@ -19,7 +22,7 @@ export function mountConsole(root, { prompt, commands }) {
 
   async function run(line) {
     line = line.trim();
-    print(`<span class="ps1">${prompt}</span> ${esc(line)}`, "cmd");
+    print(`<span class="ps1">${typeof prompt === "function" ? prompt() : prompt}</span> ${esc(line)}`, "cmd");
     if (!line) return;
     hist.push(line);
     hi = hist.length;

@@ -49,17 +49,74 @@ kbd { font: 400 10px/1 var(--f-mono); padding: 3px 5px; border-radius: 2px; bord
   background-repeat: no-repeat; filter: drop-shadow(0 0 3px rgb(0 255 65 / 0.6)); }
 .hud.locked .hud-lock { opacity: 1; }
 
-/* ---------- boot log ---------- */
-.boot { position: fixed; inset: 0; z-index: 200; display: grid; align-content: center; justify-items: start; gap: 20px; padding: 0 max(var(--gutter), 8vw);
-  background: var(--bg-0); transition: opacity 400ms ease, visibility 400ms; animation: boot-out 400ms 6s forwards; }
-.boot.done { opacity: 0; visibility: hidden; }
-.booted .boot { display: none; }
-@keyframes boot-out { to { opacity: 0; visibility: hidden; } }
-.boot .ascii { font-size: clamp(6px, 1vw, 12px); margin: 0; }
-.boot-log { min-height: 9em; font: 400 13px/1.7 var(--f-mono); color: var(--text-2); white-space: pre; }
-.boot-log div:last-child::after { content: ""; display: inline-block; width: 0.6em; height: 1em; margin-left: 2px; vertical-align: -0.15em; background: var(--accent); animation: blink 1s steps(1) infinite; }
-.boot-skip { margin: 0; }
-@media (max-width: 560px) { .boot-log { font-size: 11px; white-space: pre-wrap; } }
+/* ---------- splash: masked around the planet, which globe.js parks at the centre with r = 0.22 (0.34 on phones)
+   of the short side; the iris opens by animating --open from 0 to 1 ---------- */
+html.splashing { overflow: hidden; }
+html.splashing :is(.nav, main, .foot, .globe-hint) { opacity: 0; }
+.landing :is(.nav, main) { transition: opacity 900ms var(--ease) 200ms; }
+.booted .splash { display: none; }
+.splash { --R: calc(min(100vw, 100vh) * 0.22); --open: 0; --hole: calc(var(--R) * 1.62 + var(--open) * 150vmax);
+  position: fixed; inset: 0; z-index: 94; overflow: hidden; background: var(--bg-0); cursor: progress;
+  -webkit-mask: radial-gradient(circle at 50% 50%, transparent var(--hole), #000 calc(var(--hole) + var(--R) * 0.08));
+  mask: radial-gradient(circle at 50% 50%, transparent var(--hole), #000 calc(var(--hole) + var(--R) * 0.08)); }
+/* phones: the planet is bigger, so the hole and the reticle hug it tighter to keep the rings on screen */
+@media (max-width: 720px) {
+  .splash { --R: calc(min(100vw, 100vh) * 0.34); --hole: calc(var(--R) * 1.2 + var(--open) * 150vmax); }
+  .splash .splash-reticle { width: calc(var(--R) * 3); height: calc(var(--R) * 3); }
+}
+.splash-rain { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.3; transition: opacity 900ms ease; }
+.splash.out .splash-rain { opacity: 0; }
+.splash::after { content: ""; position: absolute; inset: 0; background: var(--accent); opacity: 0; pointer-events: none; }
+.splash.granted::after { animation: grant 420ms ease-out; }
+@keyframes grant { 12% { opacity: 0.1; } }
+
+.splash-reticle { position: absolute; left: 50%; top: 50%; width: calc(var(--R) * 4); height: calc(var(--R) * 4); transform: translate(-50%, -50%);
+  transition: transform 1500ms cubic-bezier(0.65, 0, 0.35, 1), opacity 1100ms ease; }
+.splash.out .splash-reticle { transform: translate(-50%, -50%) scale(2.6); opacity: 0; }
+.splash-reticle > i { position: absolute; left: 50%; top: 50%; border-radius: 50%; transform: translate(-50%, -50%); }
+.rt-ring { width: 88%; height: 88%; border: 1px dashed var(--line-2); animation: rt-spin 60s linear infinite; }
+.rt-ticks { width: 98%; height: 98%; opacity: 0.55; animation: rt-spin 90s linear infinite reverse;
+  background: repeating-conic-gradient(var(--accent) 0 0.25deg, transparent 0.25deg 3deg);
+  -webkit-mask: radial-gradient(circle, transparent 47.5%, #000 48%, #000 50%, transparent 50.5%); mask: radial-gradient(circle, transparent 47.5%, #000 48%, #000 50%, transparent 50.5%); }
+.rt-scan { width: 84%; height: 84%; animation: rt-spin 5s linear infinite;
+  background: conic-gradient(from 0deg, transparent 0 70%, rgb(0 255 65 / 0.35) 98%, var(--accent) 100%);
+  -webkit-mask: radial-gradient(circle, transparent 96%, #000 97%); mask: radial-gradient(circle, transparent 96%, #000 97%); }
+@keyframes rt-spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+/* four corner brackets that close in on the planet once it has loaded */
+.rt-lock { --c: var(--line-2); position: absolute; inset: 15%; transform: scale(1.18); opacity: 0.6; transition: transform 700ms cubic-bezier(0.2, 1.4, 0.4, 1), opacity 400ms; background:
+  linear-gradient(var(--c), var(--c)) 0 0 / 22px 1px, linear-gradient(var(--c), var(--c)) 0 0 / 1px 22px,
+  linear-gradient(var(--c), var(--c)) 100% 0 / 22px 1px, linear-gradient(var(--c), var(--c)) 100% 0 / 1px 22px,
+  linear-gradient(var(--c), var(--c)) 0 100% / 22px 1px, linear-gradient(var(--c), var(--c)) 0 100% / 1px 22px,
+  linear-gradient(var(--c), var(--c)) 100% 100% / 22px 1px, linear-gradient(var(--c), var(--c)) 100% 100% / 1px 22px;
+  background-repeat: no-repeat; }
+.splash.locked .rt-lock { --c: var(--accent); transform: scale(1); opacity: 1; filter: drop-shadow(0 0 4px rgb(0 255 65 / 0.8)); }
+.rt-tag { position: absolute; left: 50%; transform: translateX(-50%); font: 400 11px/1 var(--f-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.rt-n { top: 2%; } .rt-s { bottom: 2%; }
+.splash.locked .rt-n { color: var(--accent-text); }
+
+.splash-top, .splash-log, .splash-meter, .splash-skip { position: absolute; transition: opacity 500ms ease, filter 500ms ease, transform 700ms var(--ease); }
+.splash.out :is(.splash-top, .splash-log, .splash-meter, .splash-skip) { opacity: 0; filter: blur(6px); transform: translateY(-10px); }
+.splash-top { top: 28px; left: max(var(--gutter), 4vw); display: grid; gap: 10px; }
+.splash-top .ascii { margin: 0; font-size: clamp(5px, 0.7vw, 9px); }
+.splash-skip { top: 32px; right: max(var(--gutter), 4vw); margin: 0; }
+.splash-log { left: max(var(--gutter), 4vw); bottom: 32px; width: min(520px, 40vw); font: 400 12px/1.75 var(--f-mono); color: var(--text-2); }
+.splash-log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.splash-log div:last-child::after { content: ""; display: inline-block; width: 0.6em; height: 1em; margin-left: 2px; vertical-align: -0.15em; background: var(--accent); animation: blink 1s steps(1) infinite; }
+.splash-meter { right: max(var(--gutter), 4vw); bottom: 32px; width: min(380px, 34vw); display: grid; grid-template-columns: 1fr auto; gap: 10px 16px; align-items: end; }
+.splash-state { font: 800 clamp(20px, 2.2vw, 30px)/1 var(--f-display); text-transform: lowercase; color: var(--text-2); }
+.splash.granted .splash-state { color: var(--accent-text); text-shadow: var(--text-glow); animation: flick 380ms steps(2); }
+@keyframes flick { 0% { opacity: 0.2; } 30% { opacity: 1; } 55% { opacity: 0.35; } }
+.splash-pct { font-size: 13px; color: var(--accent-text); }
+.splash-bar { grid-column: 1 / -1; height: 6px; background: repeating-linear-gradient(90deg, var(--raised-2) 0 4px, transparent 4px 6px); }
+.splash-bar i { display: block; height: 100%; width: 0; background: repeating-linear-gradient(90deg, var(--accent) 0 4px, transparent 4px 6px); box-shadow: 0 0 10px rgb(0 255 65 / 0.5); }
+@media (max-width: 720px) {
+  .splash-top { left: 0; right: 0; justify-items: center; text-align: center; }
+  .splash-top .ascii { font-size: 5px; }
+  .splash-skip { display: none; }
+  .splash-log { left: var(--gutter); right: var(--gutter); bottom: 96px; width: auto; font-size: 11px; height: 7em; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
+  .splash-meter { left: var(--gutter); right: var(--gutter); bottom: 24px; width: auto; }
+  .rt-tag { display: none; }
+}
 
 /* ---------- hero ---------- */
 .hero { position: relative; min-height: 100svh; display: grid; align-content: start; padding-top: calc(60px + clamp(32px, 11vh, 120px)); }
@@ -306,8 +363,6 @@ input[type=range]:hover::-webkit-slider-thumb, input[type=range]:active::-webkit
 .token-stack { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; text-align: center; gap: 20px; }
 .ticker { font-size: clamp(56px, 11vw, 168px); }
 .final-slot { width: min(100%, 44vh, 440px); margin: 40px 0; }
-.ca { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 16px; max-width: 100%; }
-.ca .num { min-width: 0; white-space: nowrap; font-size: 13px; overflow: hidden; text-overflow: ellipsis; color: var(--accent-text); }
 
 /* ---------- logbook: an inverse-video band ---------- */
 .band { position: relative; background: var(--band); color: var(--band-ink); padding: 96px 0 112px; }

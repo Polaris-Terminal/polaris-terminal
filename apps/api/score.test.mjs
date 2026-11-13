@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { northScore, vaultScore } from "./score.mjs";
+import { northScore, vaultScore, hourly } from "./score.mjs";
 
 const now = Date.now();
 
@@ -21,4 +21,14 @@ test("more holders, more mints and fresher tokens rank higher", () => {
 test("vault score discounts thin vaults", () => {
   assert.equal(vaultScore({ apy: 0, tvl: 1e6 }), 0);
   assert.ok(vaultScore({ apy: 9, tvl: 5e8 }) > vaultScore({ apy: 9, tvl: 2e4 }));
+});
+
+test("hourly buckets births oldest first and drops the future and the old", () => {
+  const now = 100 * 3600e3;
+  const h = hourly([now - 10, now - 3600e3 - 1, now - 23.5 * 3600e3, now - 25 * 3600e3, now + 5], now, 24);
+  assert.equal(h.length, 24);
+  assert.equal(h[23], 1); // within the last hour
+  assert.equal(h[22], 1); // just over an hour ago
+  assert.equal(h[0], 1);  // 23.5h ago
+  assert.equal(h.reduce((a, b) => a + b), 3);
 });

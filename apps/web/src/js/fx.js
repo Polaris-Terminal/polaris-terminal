@@ -1,5 +1,5 @@
 // Terminal micro-interactions: text that decodes out of noise, a targeting cursor that locks onto whatever
-// is clickable, a phosphor spotlight on panels, click ripples, scroll spy, the boot log and a UTC clock.
+// is clickable, a phosphor spotlight on panels, click ripples, scroll spy and a UTC clock.
 const GLYPHS = "!<>-_\\/[]{}=+*^?#01ABCDEF$%&";
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -104,27 +104,4 @@ export function clock(el) {
   const tick = () => (el.textContent = new Date().toISOString().slice(11, 19) + " UTC");
   tick();
   setInterval(tick, 1000);
-}
-
-// Boot log, once per session. Lines are strings or async functions returning one; any key or click skips.
-export async function bootLog(el, lines) {
-  if (!el || document.documentElement.classList.contains("booted")) return el?.remove();
-  try { sessionStorage.setItem("polaris-boot", "1"); } catch { /* private mode */ }
-  let skip = false;
-  const stop = () => (skip = true);
-  addEventListener("keydown", stop, { once: true });
-  el.addEventListener("pointerdown", stop, { once: true });
-  const out = el.querySelector(".boot-log");
-  for (const line of lines) {
-    if (skip) break;
-    const text = typeof line === "function" ? await line() : line;
-    const row = document.createElement("div");
-    out.append(row);
-    for (let i = 0; i <= text.length && !skip; i += 3) { row.textContent = text.slice(0, i); await sleep(8); }
-    row.textContent = text;
-    await sleep(70);
-  }
-  if (!skip) await sleep(260);
-  el.classList.add("done");
-  setTimeout(() => el.remove(), 450);
 }

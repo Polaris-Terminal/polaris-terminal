@@ -37,6 +37,9 @@ const POSES = {
   },
 };
 const REST = new Set(["hero", "drift", "console", "final"]);
+// while the splash runs the planet waits in the middle of its reticle (landing.css sizes the reticle from the same r)
+const INTRO = { wide: { x: 0.5, y: 0.5, r: 0.22, dim: 1, ov: 0.9 }, mobile: { x: 0.5, y: 0.5, r: 0.34, dim: 1, ov: 0.9 } };
+const easeInOut = (f) => (f < 0.5 ? 4 * f * f * f : 1 - (-2 * f + 2) ** 3 / 2);
 
 function chapters(w, h) {
   const table = w <= 720 ? POSES.mobile : w <= 980 ? POSES.tablet : POSES.wide;
@@ -183,18 +186,23 @@ void main() {
   #include <colorspace_fragment>
 }`;
 const SKY_F = `
-uniform float uTime; varying vec2 vUv;
+uniform float uTime; uniform vec2 uMouse; varying vec2 vUv;
 void main() {
   float s = sin(uTime * 0.02) * 0.03;
+  vec2 uv = vUv - uMouse * 0.012; // the nebula sits far away, so it barely moves against the cursor
   vec3 c = vec3(0.0003, 0.0018, 0.0009);
-  c += vec3(0.001, 0.02, 0.007) * exp(-length((vUv - vec2(-0.1 + s, 0.45)) * vec2(1.4, 0.8)) * 3.4);
-  c += vec3(0.0008, 0.015, 0.006) * exp(-length((vUv - vec2(1.12, 0.28 + s)) * vec2(1.3, 0.85)) * 3.6);
-  c += vec3(0.001, 0.012, 0.005) * exp(-length((vUv - vec2(0.55, 0.02)) * vec2(1.0, 1.7)) * 5.5);
+  c += vec3(0.001, 0.02, 0.007) * exp(-length((uv - vec2(-0.1 + s, 0.45)) * vec2(1.4, 0.8)) * 3.4);
+  c += vec3(0.0008, 0.015, 0.006) * exp(-length((uv - vec2(1.12, 0.28 + s)) * vec2(1.3, 0.85)) * 3.6);
+  c += vec3(0.001, 0.012, 0.005) * exp(-length((uv - vec2(0.55, 0.02)) * vec2(1.0, 1.7)) * 5.5);
   gl_FragColor = vec4(c, 1.0);
   #include <colorspace_fragment>
 }`;
-const DUST_V = `attribute float aSize; attribute vec3 aColor; uniform float uDpr; varying vec3 vColor;
-void main() { vColor = aColor; gl_Position = vec4(position.xy, 0.99, 1.0); gl_PointSize = max(1.0, aSize * uDpr); }`;
+const DUST_V = `attribute float aSize; attribute vec3 aColor; uniform float uDpr; uniform vec2 uMouse; varying vec3 vColor;
+void main() {
+  vColor = aColor;
+  gl_Position = vec4(position.xy - uMouse * (0.004 + aSize * 0.012), 0.99, 1.0); // brighter, nearer dust drifts further
+  gl_PointSize = max(1.0, aSize * uDpr);
+}`;
 const DUST_F = `varying vec3 vColor;
 void main() {
   float d = length(gl_PointCoord - 0.5);
@@ -228,7 +236,7 @@ function bezelTexture() {
   return tex;
 }
 
-export function mountGlobe({ layer, canvas, target, hint, tip, describe = (t) => t.symbol, onPing, onSelect, onStory }) {
+export function mountGlobe({ layer, canvas, target, hint, tip, describe = (t) => t.symbol, onPing, onSelect, onStory, onReady, intro = false }) {
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const small = innerWidth <= 720;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: "high-performance" });
@@ -240,7 +248,7 @@ export function mountGlobe({ layer, canvas, target, hint, tip, describe = (t) =>
   root.add(planet);
   scene.add(root);
 
-  const U = { uTime: { value: 0 }, uSweep: { value: 0 }, uDim: { value: 1 }, uOv: { value: 0 }, uPx: { value: 100 }, uGreen: { value: GREEN } };
+  const U = { uTime: { value: 0 }, uSweep: { value: 0 }, uDim: { value: 1 }, uOv: { value: 0 }, uPx: { value: 100 }, uGreen: { value: GREEN }, uMouse: { value: new THREE.Vector2() } };
   const pings = Array.from({ length: 8 }, () => new THREE.Vector4(0, 1, 0, -99));
   let pingIx = 0;
   const addPing = (d) => { pings[pingIx].set(d.x, d.y, d.z, U.uTime.value); pingIx = (pingIx + 1) % pings.length; };
@@ -312,7 +320,7 @@ export function mountGlobe({ layer, canvas, target, hint, tip, describe = (t) =>
   dustGeo.setAttribute("position", new THREE.Float32BufferAttribute(dp, 3));
   dustGeo.setAttribute("aSize", new THREE.Float32BufferAttribute(ds, 1));
   dustGeo.setAttribute("aColor", new THREE.Float32BufferAttribute(dc, 3));
-  const dust = new THREE.Points(dustGeo, new THREE.ShaderMaterial({ vertexShader: DUST_V, fragmentShader: DUST_F, uniforms: { uDpr: { value: 1 } }, depthWrite: false, depthTest: false }));
+  const dust = new THREE.Points(dustGeo, new THREE.ShaderMaterial({ vertexShader: DUST_V, fragmentShader: DUST_F, uniforms: { uDpr: { value: 1 }, uMouse: U.uMouse }, depthWrite: false, depthTest: false }));
   [sky, dust].forEach((o, i) => { o.frustumCulled = false; o.renderOrder = i - 21; scene.add(o); });
 
   const composer = new EffectComposer(renderer);
@@ -396,6 +404,10 @@ export function mountGlobe({ layer, canvas, target, hint, tip, describe = (t) =>
   const spinQ = new THREE.Quaternion(), dq = new THREE.Quaternion(), prev = new THREE.Vector3(), now3 = new THREE.Vector3(), flingAxis = new THREE.Vector3(0, 1, 0);
   let phase = 0, spinSpeed = 0, speed = 0, drag = false, down = null, lastInput = -1e4, lastPointer = 0, paused = reduce, facing = null;
   let lastScroll = null, entranceAt = -1, revealAt = -1, nextAuto = 0, hover = null, shown = false;
+  const introPose = () => (w <= 720 ? INTRO.mobile : INTRO.wide);
+  let from = null; // the pose the planet leaves the splash from
+  const mouse = new THREE.Vector2(), mouseTo = new THREE.Vector2();
+  if (!reduce) addEventListener("pointermove", (e) => { if (e.pointerType === "mouse") mouseTo.set((e.clientX / w) * 2 - 1, 1 - (e.clientY / h) * 2); }, { passive: true });
 
   function measure() { path = buildPath(chapters(w, h)); }
   function resize() {
@@ -412,7 +424,7 @@ export function mountGlobe({ layer, canvas, target, hint, tip, describe = (t) =>
   new ResizeObserver(measure).observe(document.querySelector("main") || document.body);
   document.fonts?.ready.then(measure);
   resize();
-  samplePath(path, scrollY, cur);
+  if (intro && !reduce) Object.assign(cur, introPose()); else samplePath(path, scrollY, cur);
 
   // ---------- input ----------
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), tmp = new THREE.Vector3();
@@ -521,10 +533,19 @@ export function mountGlobe({ layer, canvas, target, hint, tip, describe = (t) =>
     last = t;
     samplePath(path, scrollY, goal);
     if (reduce) Object.assign(goal, { x: 0.5, y: 0.62, r: w <= 720 ? 0.46 : 0.36, dim: 0.55, ov: 0.6 });
-    if (!drag) {
+    else if (intro && !shown) Object.assign(goal, introPose());
+    const glide = from ? clamp((performance.now() - revealAt) / 1700, 0, 1) : 1; // same clock as revealAt
+    if (from) { // leaving the splash: one eased move into the hero, with a swing of spin
+      const e = easeInOut(glide);
+      for (const key of ["x", "y", "r", "dim", "ov"]) cur[key] = from[key] + (goal[key] - from[key]) * e;
+      phase += dt * 1.6 * Math.sin(Math.PI * glide);
+      if (glide >= 1) from = null;
+    } else if (!drag) {
       const k = reduce ? 1 : damp(revealAt >= 0 && t - revealAt < 1400 ? 4 : 12, dt);
       for (const key of ["x", "y", "r", "dim", "ov"]) cur[key] += (goal[key] - cur[key]) * k;
     }
+    mouse.lerp(mouseTo, damp(2.5, dt));
+    U.uMouse.value.copy(mouse);
     let lift = 0;
     if (entranceAt >= 0) {
       const f = Math.min(1, (t - entranceAt) / 1750);
@@ -575,7 +596,7 @@ export function mountGlobe({ layer, canvas, target, hint, tip, describe = (t) =>
     }
 
     if (light) renderer.render(scene, camera); else composer.render(dt);
-    if (firstFrame && assets) { firstFrame = false; layer.classList.add("ready"); }
+    if (firstFrame && assets) { firstFrame = false; layer.classList.add("ready"); onReady?.(); }
   }
   document.addEventListener("visibilitychange", () => {
     cancelAnimationFrame(raf);
@@ -592,7 +613,8 @@ export function mountGlobe({ layer, canvas, target, hint, tip, describe = (t) =>
       if (shown) return;
       shown = true;
       revealAt = performance.now();
-      if (!reduce && scrollY < h * 0.2) entranceAt = revealAt;
+      if (intro && !reduce) from = { ...cur };
+      else if (!reduce && scrollY < h * 0.2) entranceAt = revealAt;
     },
     pause() { paused = !paused; if (paused) { speed = 0; spinSpeed = 0; } return paused; },
     reset() { user.copy(initial); phase = 0; speed = 0; facing = null; lastInput = performance.now(); },

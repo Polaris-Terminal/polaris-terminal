@@ -4,7 +4,7 @@
 import http from "node:http";
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, createReadStream } from "node:fs";
 import { join, extname, resolve } from "node:path";
-import { northScore } from "./score.mjs";
+import { northScore, hourly } from "./score.mjs";
 
 const NETS = {
   robinhoodTestnet: { rpc: "https://rpc.testnet.chain.robinhood.com", explorer: "https://explorer.testnet.chain.robinhood.com" },
@@ -25,6 +25,9 @@ const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523
 const ZERO_TOPIC = "0x" + "0".repeat(64);
 
 const deployments = existsSync(DEPLOY) ? JSON.parse(readFileSync(DEPLOY, "utf8")) : null;
+// $POLARIS launches elsewhere: the testnet token stays off the site (contracts list and drift) until then
+const hiddenToken = deployments?.contracts?.token?.proxy?.toLowerCase();
+const listed = (addr) => addr?.toLowerCase() !== hiddenToken;
 const STATE_FILE = join(DATA, `state-${NETWORK}.json`);
 mkdirSync(DATA, { recursive: true });
 
@@ -177,6 +180,7 @@ async function refreshContracts() {
 function drift(limit = 40) {
   const now = Date.now();
   const list = Object.values(state.tokens)
+    .filter((t) => listed(t.address))
     .map((t) => ({ ...t, ...northScore(t, now, WINDOW_MS), ageMin: Math.max(1, Math.round((now - t.bornAt) / 60e3)) }))
     .sort((a, b) => b.score - a.score);
   return {
@@ -184,6 +188,7 @@ function drift(limit = 40) {
     born24h: list.filter((t) => now - t.bornAt < 24 * 3600e3).length,
     born1h: list.filter((t) => now - t.bornAt < 3600e3).length,
     tracked: list.length,
+    hourly: hourly(list.map((t) => t.bornAt), now),
     tokens: list.slice(0, limit),
   };
 }
@@ -198,7 +203,7 @@ const routes = {
   "/api/pulse": () => ({ network: NETWORK, block: state.head, ...state.pulse, drift: { born24h: drift().born24h, born1h: drift().born1h } }),
   "/api/drift": (q) => drift(Math.min(100, +q.get("limit") || 40)),
   "/api/beacon": () => leaderboard(),
-  "/api/contracts": () => ({ network: NETWORK, explorer: EXPLORER, contracts: Object.values(state.contracts) }),
+  "/api/contracts": () => ({ network: NETWORK, explorer: EXPLORER, contracts: Object.values(state.contracts).filter((c) => listed(c.proxy)) }), // filtered on read: older state files still hold the token
 };
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".woff2": "font/woff2", ".ico": "image/x-icon" };
