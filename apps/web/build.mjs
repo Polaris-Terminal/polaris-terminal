@@ -5,6 +5,8 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 const NETWORK = process.env.NETWORK || "robinhoodTestnet";
+// The launched $POLARIS contract address, given by the owner (never the testnet token from deployments). Empty keeps it off the site.
+const POLARIS_CA = "";
 const CHAINS = {
   robinhoodTestnet: {
     id: 46630, name: "Robinhood Chain Testnet", testnet: true,
@@ -33,6 +35,7 @@ const config = {
   chain: { ...chain, hex: "0x" + chain.id.toString(16) },
   api: process.env.API_BASE || "",
   deployedAt: dep.deployedAt,
+  ca: NETWORK === "robinhood" && POLARIS_CA ? POLARIS_CA : null, // mainnet only: the testnet site keeps the token hidden
   // $POLARIS launches elsewhere; its address goes on the site only once that launch is live
   contracts: Object.entries(c).filter(([key]) => key !== "token").map(([key, v]) => ({ key, name: v.name, proxy: v.proxy, implementation: v.implementation, version: "1.0.0" })),
   // the vault asset is plain ERC-20 (pUSD on testnet, USDG on mainnet)

@@ -9,6 +9,8 @@
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
     "dev:web": "pnpm --filter @polaris/web dev",
-    "dev:api": "pnpm --filter @polaris/api dev"
+    "dev:api": "pnpm --filter @polaris/api dev",
+    "testnet:verify": "node packages/contracts/scripts/verify-live.mjs testnet",
+    "mainnet:verify": "node packages/contracts/scripts/verify-live.mjs mainnet"
   }
 }

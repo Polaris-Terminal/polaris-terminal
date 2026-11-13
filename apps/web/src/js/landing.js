@@ -17,6 +17,16 @@ $$("[data-faucet]").forEach((a) => (CONFIG.chain.faucet ? (a.href = CONFIG.chain
 const logDate = new Date(CONFIG.deployedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 $$("[data-date]").forEach((el) => (el.textContent = logDate));
 
+// ---------- $POLARIS contract address in the hero, once the launch is live (POLARIS_CA in build.mjs) ----------
+if (CONFIG.ca) {
+  setText($("#heroCaAddr"), CONFIG.ca);
+  $("#heroCaCopy").innerHTML = ICON.copy;
+  $("#heroCaCopy").onclick = () => copy(CONFIG.ca, $("#heroCaCopy"));
+  $("#heroCaLink").innerHTML = ICON.ext;
+  $("#heroCaLink").href = explorerAddr(CONFIG.ca);
+  $("#heroCa").hidden = false;
+}
+
 // ---------- interaction layer ----------
 ripples(".btn, .icon-btn, .chip, .seg button, .rank-row");
 decodeOnHover(".btn, .nav-links a, .chip, .tlink, .foot a");

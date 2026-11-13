@@ -66,6 +66,7 @@
     </nav>
     <div class="nav-right">
       <span class="nav-clock" id="clock"></span>
+      <a class="icon-btn" href="https://x.com/UsePolarisTech" target="_blank" rel="noopener" aria-label="Polaris Terminal on X" title="Follow on X" data-icon="x"></a>
       <button class="icon-btn" id="theme" aria-label="Switch theme"></button>
       <a class="btn btn-primary btn-sm hide-sm" href="/app">Open terminal</a>
       <button class="icon-btn menu-btn" aria-label="Menu" data-icon="menu"></button>
@@ -84,6 +85,12 @@
       <div class="hero-cta">
         <a class="btn btn-primary" href="/app">Open terminal<svg class="i arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
         <a class="btn btn-ghost" href="#console">Try the console</a>
+      </div>
+      <div class="hero-ca" id="heroCa" hidden>
+        <span class="hero-ca-k">$POLARIS · CA</span>
+        <code class="hero-ca-v" id="heroCaAddr"></code>
+        <button class="icon-btn" id="heroCaCopy" aria-label="Copy the $POLARIS contract address"></button>
+        <a class="icon-btn" id="heroCaLink" target="_blank" rel="noopener" aria-label="Open $POLARIS in the explorer"></a>
       </div>
     </div>
   </section>
