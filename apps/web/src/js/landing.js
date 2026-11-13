@@ -14,8 +14,8 @@ const net = CONFIG.testnet ? "Testnet" : "Mainnet";
 $$("[data-net-tag]").forEach((el) => (el.textContent = el.closest(".legal") ? CONFIG.chain.name : net));
 $$("[data-explorer]").forEach((a) => (a.href = CONFIG.chain.explorer));
 $$("[data-faucet]").forEach((a) => (CONFIG.chain.faucet ? (a.href = CONFIG.chain.faucet) : a.closest("li").remove()));
-const logDate = new Date(CONFIG.deployedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-$$("[data-date]").forEach((el) => (el.textContent = logDate));
+const logDate = (d) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+$$("[data-date]").forEach((el) => (el.textContent = logDate(el.dataset.date || CONFIG.deployedAt))); // releases carry their own date
 
 // ---------- $POLARIS contract address in the hero, once the launch is live (POLARIS_CA in build.mjs) ----------
 if (CONFIG.ca) {

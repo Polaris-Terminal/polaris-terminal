@@ -9,11 +9,21 @@ On Robinhood Chain a new token is born every minute. Everyone moves and almost n
 - **North Vaults** are ERC-4626 vaults with linearly streamed yield, ranked by APY × depth × exit liquidity
 - **Beacon** is a daily on-chain check-in with streaks, XP and a leaderboard rebuilt from chain logs
 
+**v2.0 · Orbit** replays every token's Transfer history for more signals:
+
+- **Score history** every 15 minutes of a token's life, and **cluster detection** for launch bundles and one-transaction splits
+- **Deployer profile**: each creator's launches, how much it sold into its own pools, and how they turned out
+- **Watchlist & alerts** on liquidity opening, deployer sells and score drops
+- **Stock-pair integrity** against Robinhood's canonical stock token registry
+- **Launchpad coverage** by creation target, and venues from every Uniswap v2/v3/v4-style pool factory
+- **Track record**: every token graded a day after birth against the score it showed at one hour
+- **Holder tier**: 10,000 $POLARIS (read-only balance) unlocks 25 watch slots, 15s alerts and 48h history
+
 ## Monorepo
 
 ```
 apps/web            static site: HTML, CSS, vanilla JS modules, GSAP, Lenis, three.js
-apps/api            zero-dependency Node signal API (drift scanner, pulse, beacon board)
+apps/api            zero-dependency Node signal API (drift scanner, pools, Orbit signals, pulse, beacon board)
 packages/contracts  Solidity, Hardhat 3, OpenZeppelin UUPS upgradeable contracts
 infra               systemd + Traefik templates and the deploy script
 ```

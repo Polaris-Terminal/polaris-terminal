@@ -12,7 +12,9 @@ case "$ENV" in
            RPCS="https://rpc.mainnet.chain.robinhood.com https://robinhood.drpc.org https://robinhood-rpc.publicnode.com"; EXPLORER=https://robinhoodchain.blockscout.com
            # the explorer API is behind a bot wall: the API reads the chain and Sourcify; an optional Blockscout key makes pulse stats exact
            SOURCIFY=4663; BLOCKSCOUT_API_KEY="${BLOCKSCOUT_API_KEY:-$(sed -n 's/^BLOCKSCOUT_API_KEY=//p' "$(dirname "$0")/../.env.deployer" 2>/dev/null)}"
-           EXTRA="${BLOCKSCOUT_API_KEY:+EXPLORER_API_KEY=$BLOCKSCOUT_API_KEY\n}SEED_BLOCKS=72000\n" ;; # seed ~2h of 0.1s blocks
+           # the Orbit holder tier reads the launched $POLARIS, the same CA the landing hero shows
+           CA="$(sed -n 's/^const POLARIS_CA = "\(0x[0-9a-fA-F]\{40\}\)".*/\1/p' "$(dirname "$0")/../apps/web/build.mjs")"
+           EXTRA="${BLOCKSCOUT_API_KEY:+EXPLORER_API_KEY=$BLOCKSCOUT_API_KEY\n}${CA:+HOLDER_TOKEN=$CA\n}SEED_BLOCKS=72000\n" ;; # seed ~2h of 0.1s blocks
   *) echo "unknown env $ENV"; exit 1 ;;
 esac
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

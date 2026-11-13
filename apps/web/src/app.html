@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Terminal · Polaris</title>
-<meta name="description" content="Polaris Terminal: Drift Radar, North Vaults and the Beacon on Robinhood Chain.">
+<meta name="description" content="Polaris Terminal: Drift Radar, North Vaults, the Beacon and Orbit signals on Robinhood Chain.">
 <meta name="theme-color" content="#010603">
 <link rel="icon" href="/assets/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
@@ -27,6 +27,11 @@
     <a href="#radar" data-tab="radar"><kbd>1</kbd><span>drift_radar</span><small class="num" id="nRadar"></small></a>
     <a href="#vaults" data-tab="vaults"><kbd>2</kbd><span>north_vaults</span><small class="num" id="nVaults"></small></a>
     <a href="#beacon" data-tab="beacon"><kbd>3</kbd><span>beacon</span><small class="num" id="nBeacon"></small></a>
+    <p class="label">Orbit · v2.0</p>
+    <a href="#watch" data-tab="watch"><kbd>4</kbd><span>watchlist</span><small class="num" id="nWatch"></small></a>
+    <a href="#deployer" data-tab="deployer"><kbd>5</kbd><span>deployer</span></a>
+    <a href="#record" data-tab="record"><kbd>6</kbd><span>track_record</span><small class="num" id="nRecord"></small></a>
+    <a href="#venues" data-tab="venues"><kbd>7</kbd><span>launchpads</span><small class="num" id="nVenues"></small></a>
     <p class="label">Reference</p>
     <a href="/docs" data-icon="doc"><span>docs</span></a>
     <a data-explorer target="_blank" rel="noopener" data-icon="ext"><span>explorer</span></a>
@@ -57,7 +62,7 @@
     <form class="term-in" autocomplete="off"><label class="ps1" for="qcIn">$</label><input id="qcIn" spellcheck="false" autocapitalize="off" placeholder="type help · tab completes · ↑ ↓ history"></form>
     <div class="term-chips">
       <button class="chip" data-cmd="help">help</button><button class="chip" data-cmd="top 5">top 5</button><button class="chip" data-cmd="vaults">vaults</button>
-      <button class="chip" data-cmd="deposit 1000">deposit 1000</button><button class="chip" data-cmd="xp 7">xp 7</button><button class="chip" data-cmd="tour">tour</button><button class="chip" data-cmd="clear">clear</button>
+      <button class="chip" data-cmd="deposit 1000">deposit 1000</button><button class="chip" data-cmd="xp 7">xp 7</button><button class="chip" data-cmd="record">record</button><button class="chip" data-cmd="launchpads">launchpads</button><button class="chip" data-cmd="tour">tour</button><button class="chip" data-cmd="clear">clear</button>
     </div>
   </div>
 
@@ -76,15 +81,28 @@
       </div>
       <div class="panel detail" id="detail">
         <div class="panel-head"><div><p class="label">Signal</p><h2 class="h3" id="dName">Reading the sky</h2></div><span class="score num" id="dScore">50</span></div>
+        <div class="dtags" id="dTags"></div>
         <div class="factors" id="dFactors"></div>
+        <div class="hist">
+          <div class="hist-head"><span class="label">Score history</span><span class="label" id="dHistR">replaying transfers</span></div>
+          <div class="chart mini" id="dHist"><svg preserveAspectRatio="none"></svg><div class="chart-tip" hidden></div></div>
+        </div>
+        <dl class="facts" id="dSig"></dl>
         <dl class="facts" id="dFacts"></dl>
-        <a class="btn btn-ghost" id="dLink" target="_blank" rel="noopener">Open in explorer<svg class="i" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+        <div class="dbtns">
+          <button class="btn btn-primary btn-sm" id="dWatch">Watch</button>
+          <button class="btn btn-ghost btn-sm" id="dDep">Deployer</button>
+          <a class="btn btn-ghost btn-sm" id="dLink" target="_blank" rel="noopener">Explorer<svg class="i" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+        </div>
       </div>
     </div>
     <div class="panel table-panel">
       <div class="panel-head">
         <div><p class="label">The Drift</p><h2 class="h3">Every newborn token, ranked</h2></div>
-        <div class="seg" id="sortSeg"><button data-s="score" class="on">Score</button><button data-s="age">Newest</button><button data-s="holders">Holders</button></div>
+        <div class="table-ctl">
+          <label class="pick"><span class="sr">Launchpad</span><select id="padSel" aria-label="Filter by launchpad"><option value="">All launchpads</option></select></label>
+          <div class="seg" id="sortSeg"><button data-s="score" class="on">Score</button><button data-s="age">Newest</button><button data-s="holders">Holders</button></div>
+        </div>
       </div>
       <div class="ttable">
         <div class="trow thead label"><span>#</span><span>Token</span><span>Age</span><span>Holders</span><span>Mints</span><span>North Score</span></div>
@@ -171,10 +189,119 @@
     </div>
   </section>
 
+
+  <!-- ================= v2.0 orbit: watchlist ================= -->
+  <section class="view" id="v-watch" hidden>
+    <div class="stats">
+      <div class="stat card"><span class="label">Watching</span><b class="num" id="wCount">0 / 5</b><small class="dim">tokens pinned in this browser</small></div>
+      <div class="stat card"><span class="label">Your tier</span><b class="num" id="wTier">Public</b><small class="dim" id="wTierD">connect a wallet to check</small></div>
+      <div class="stat card"><span class="label">Alerts in 24h</span><b class="num" id="wAlerts">Quiet</b><small class="dim" id="wPoll">every 60s</small></div>
+      <div class="stat card"><span class="label">Delivery</span><b class="num" id="wNote">In-app</b><small class="dim" id="wNoteD">toasts while this tab is open</small></div>
+    </div>
+    <div class="orbit-layout">
+      <div class="panel table-panel">
+        <div class="panel-head"><div><p class="label">Watchlist</p><h2 class="h3">Tokens you are tracking</h2></div><button class="btn btn-ghost btn-sm" id="wNotify">Turn on desktop alerts</button></div>
+        <div class="wrows" id="wRows"></div>
+      </div>
+      <div class="panel table-panel">
+        <div class="panel-head"><div><p class="label">Alert feed</p><h2 class="h3">What moved</h2></div></div>
+        <div class="feed" id="wFeed"></div>
+      </div>
+    </div>
+    <div class="panel table-panel">
+      <div class="panel-head"><div><p class="label">Holder tier</p><h2 class="h3">Hold $POLARIS, see sooner</h2></div><span class="label">read-only balance check · no staking</span></div>
+      <div class="tiers">
+        <div class="tier-row label"><span>Tier</span><span>Watch slots</span><span>Alert checks</span><span>Score history</span></div>
+        <div class="tier-row" data-tier-row="public"><span>Public</span><span class="num">5</span><span class="num">every 60s</span><span class="num">last 6h</span></div>
+        <div class="tier-row" data-tier-row="holder"><span>Holder · 10,000 $POLARIS</span><span class="num">25</span><span class="num">every 15s</span><span class="num">full 48h</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= v2.0 orbit: deployer profile ================= -->
+  <section class="view" id="v-deployer" hidden>
+    <form class="panel dep-form" id="depForm" autocomplete="off">
+      <label class="field"><span class="label">Deployer wallet</span>
+        <div class="field-in"><input id="depIn" spellcheck="false" placeholder="0x… or pick Deployer on any token"><button class="btn btn-primary btn-sm">Inspect</button></div>
+      </label>
+    </form>
+    <div class="stats">
+      <div class="stat card"><span class="label">Launches · 48h</span><b class="num" id="depN">Pick one</b><small class="dim" id="depND">tokens this wallet created</small></div>
+      <div class="stat card"><span class="label">Average pull</span><b class="num" id="depAvg">NS</b><small class="dim">North Score of its live launches</small></div>
+      <div class="stat card"><span class="label">Thrived / rugged</span><b class="num" id="depOut">Graded</b><small class="dim">one day after each launch</small></div>
+      <div class="stat card"><span class="label">Wallet</span><b class="num" id="depW">History</b><small class="dim" id="depWD">transactions sent</small></div>
+    </div>
+    <div class="panel table-panel">
+      <div class="panel-head"><div><p class="label">Deployer profile</p><h2 class="h3" id="depHead">Launch history</h2></div><a class="btn btn-ghost btn-sm" id="depLink" target="_blank" rel="noopener">Explorer</a></div>
+      <div class="dtags" id="depTags"></div>
+      <div class="dtable-x">
+        <div class="drow thead label"><span>Token</span><span>Age</span><span>Score</span><span>Holders</span><span>Deployer sold</span><span>Cluster · outcome</span></div>
+        <div id="depRows"><p class="hint">Open any token on the radar and press <b>Deployer</b>, or paste a wallet above</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= v2.0 orbit: track record ================= -->
+  <section class="view" id="v-record" hidden>
+    <div class="stats">
+      <div class="stat card"><span class="label">Tokens graded</span><b class="num sk" id="recN">480</b><small class="dim" id="recND">graded 24h after birth</small></div>
+      <div class="stat card"><span class="label">Scored 60+ and thrived</span><b class="num sk" id="recHi">40%</b><small class="dim">share of strong early pulls that grew</small></div>
+      <div class="stat card"><span class="label">Scored under 20 and rugged</span><b class="num sk" id="recLo">30%</b><small class="dim">share of weak early pulls that broke</small></div>
+      <div class="stat card"><span class="label">Method</span><b class="num">1h → 24h</b><small class="dim">score at one hour, outcome at one day</small></div>
+    </div>
+    <div class="panel table-panel">
+      <div class="panel-head"><div><p class="label">Track record</p><h2 class="h3">Did the score call it?</h2></div><span class="legend label"><i class="thrived"></i>thrived <i class="faded"></i>faded <i class="rugged"></i>rugged</span></div>
+      <div class="bands">
+        <div class="brow label"><span>Score at 1h</span><span>Tokens</span><span>Outcome a day later</span><span>Thrived</span><span>Rugged</span><span>Median holders</span></div>
+        <div id="recBands"></div>
+      </div>
+      <p class="label rec-note">thrived = holders doubled to 25+ · rugged = deployer sold 25%+ or holders halved from peak · faded = everything else</p>
+    </div>
+    <div class="panel table-panel">
+      <div class="panel-head"><div><p class="label">Graded</p><h2 class="h3">Latest calls, checked against the chain</h2></div></div>
+      <div class="dtable-x">
+        <div class="drow thead label"><span>Token</span><span>Born</span><span>Score at 1h</span><span>Holders 1h → 24h</span><span>Deployer sold</span><span>Outcome</span></div>
+        <div id="recRows"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= v2.0 orbit: launchpads, venues, stock pairs ================= -->
+  <section class="view" id="v-venues" hidden>
+    <div class="stats">
+      <div class="stat card"><span class="label">Launchpads seen</span><b class="num sk" id="venPads">12</b><small class="dim">creation targets in the window</small></div>
+      <div class="stat card"><span class="label">Trading venues</span><b class="num sk" id="venVenues">8</b><small class="dim">v2, v3 and v4 pool factories</small></div>
+      <div class="stat card"><span class="label">Pools opened</span><b class="num sk" id="venPools">400</b><small class="dim">in the 48h window</small></div>
+      <div class="stat card"><span class="label">Stock tokens</span><b class="num sk" id="venStocks">203</b><small class="dim" id="venStocksD">canonical contracts checked</small></div>
+    </div>
+    <div class="orbit-layout">
+      <div class="panel table-panel">
+        <div class="panel-head"><div><p class="label">Launchpad coverage</p><h2 class="h3">Where the Drift is born</h2></div><span class="label">click to filter the radar</span></div>
+        <div class="vrows">
+          <div class="vrow thead label"><span>Launchpad</span><span>Tokens</span><span>24h</span><span>Avg</span><span>Strongest</span></div>
+          <div id="padRows"></div>
+        </div>
+      </div>
+      <div class="panel table-panel">
+        <div class="panel-head"><div><p class="label">Venues</p><h2 class="h3">Where it trades</h2></div></div>
+        <div class="vrows">
+          <div class="vrow thead label"><span>Venue</span><span>Kind</span><span>Pools</span><span>24h</span><span>Drift</span></div>
+          <div id="venRows"></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel table-panel" id="pairPanel">
+      <div class="panel-head"><div><p class="label">Stock-pair integrity</p><h2 class="h3">Canonical stock token, or a lookalike?</h2></div><span class="label">checked against Robinhood's asset registry</span></div>
+      <div class="prows" id="pairRows"></div>
+      <p class="label">Newborn tokens using a stock ticker</p>
+      <div class="prows" id="fakeRows"></div>
+    </div>
+  </section>
+
   <footer class="status" aria-label="Status">
-    <span class="st-mode">polaris</span>
-    <nav class="st-tabs" aria-label="Views"><a href="#radar" data-tab="radar">1:radar</a><a href="#vaults" data-tab="vaults">2:vaults</a><a href="#beacon" data-tab="beacon">3:beacon</a></nav>
-    <span class="st-keys">/ shell · j/k select · 1-3 switch · ? tour</span>
+    <span class="st-mode">polaris v2.0</span>
+    <nav class="st-tabs" aria-label="Views"><a href="#radar" data-tab="radar">1:radar</a><a href="#vaults" data-tab="vaults">2:vaults</a><a href="#beacon" data-tab="beacon">3:beacon</a><a href="#watch" data-tab="watch">4:watch</a><a href="#deployer" data-tab="deployer">5:deployer</a><a href="#record" data-tab="record">6:record</a><a href="#venues" data-tab="venues">7:pads</a></nav>
+    <span class="st-keys">/ shell · j/k select · 1-7 switch · w watch · ? tour</span>
     <span class="st-net"><span class="dot live" id="netDot"></span><span id="netName">Robinhood Chain</span></span>
     <span class="num" id="netBlock">syncing</span>
     <span class="num st-lat" id="stLat">rpc --</span>

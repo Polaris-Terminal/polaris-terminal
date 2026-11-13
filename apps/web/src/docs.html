@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Docs · Polaris Terminal</title>
-<meta name="description" content="How Polaris Terminal reads the Drift, scores tokens, ranks North Vaults and runs the Beacon.">
+<meta name="description" content="How Polaris Terminal reads the Drift, scores tokens, ranks North Vaults, runs the Beacon and computes the Orbit signals.">
 <meta name="theme-color" content="#010603">
 <link rel="icon" href="/assets/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
@@ -22,7 +22,7 @@
   <div class="wrap">
     <a class="brand" href="/"><img class="logo" src="/assets/logo-96.jpg" alt="" width="28" height="28">Polaris Terminal<small class="hide-sm" data-net-tag>Testnet</small></a>
     <nav class="nav-links" aria-label="Docs">
-      <a href="#drift">Drift</a><a href="#score">North Score</a><a href="#vaults">Vaults</a><a href="#beacon">Beacon</a><a href="#contracts">Contracts</a><a href="#network">Network</a>
+      <a href="#drift">Drift</a><a href="#score">North Score</a><a href="#vaults">Vaults</a><a href="#beacon">Beacon</a><a href="#orbit">Orbit</a><a href="#contracts">Contracts</a>
     </nav>
     <div class="nav-right">
       <a class="icon-btn" href="https://x.com/UsePolarisTech" target="_blank" rel="noopener" aria-label="Polaris Terminal on X" title="Follow on X" data-icon="x"></a>
@@ -35,7 +35,7 @@
 
 <main class="wrap docs">
   <aside class="toc label">
-    <a href="#drift">The Drift</a><a href="#score">North Score</a><a href="#vaults">North Vaults</a><a href="#beacon">Beacon</a><a href="#contracts">Contracts</a><a href="#network">Network</a>
+    <a href="#drift">The Drift</a><a href="#score">North Score</a><a href="#vaults">North Vaults</a><a href="#beacon">Beacon</a><a href="#orbit">Orbit · v2.0</a><a href="#contracts">Contracts</a><a href="#network">Network</a>
   </aside>
   <article>
     <h1 class="display">Field manual</h1>
@@ -70,6 +70,50 @@ score = APY × depth × exit</code></pre>
 holder boost = ×1.5 while the wallet holds 10,000 $POLARIS</code></pre>
     <p>Every ping emits <code>Pinged(observer, day, streak, xp, gained)</code>. The leaderboard is rebuilt from these events, so anyone can recompute it.</p>
 
+
+    <h2 id="orbit">Orbit signals · v2.0</h2>
+    <p>Orbit adds eight instruments on top of the North Score. Each one is computed by replaying the token's own <code>Transfer</code> logs from its birth block, so anyone with an RPC can rebuild every number below.</p>
+
+    <h3 id="history">Score history</h3>
+    <p>The North Score recomputed every 15 minutes of a token's life from the holders and mints it had at that moment. Block times come from the token's own birth block and the chain head, because Robinhood Chain logs do not carry reliable timestamps.</p>
+
+    <h3 id="clusters">Cluster detection</h3>
+    <pre><code>launch bundle = wallets that bought from a pool in the first 30s of trading
+split         = one transaction that seeds 3 or more fresh wallets
+cluster share = supply still held by bundle and split wallets
+level         = high   if cluster share ≥ 30% or top 10 ≥ 70%
+                watch  if cluster share ≥ 10% or top 10 ≥ 40%
+                clear  otherwise</code></pre>
+
+    <h3 id="deployer">Deployer profile</h3>
+    <p>Every token is tied to the wallet that sent its creation transaction. The profile lists that wallet's launches in the window and the graded ones from the last 30 days: how much of each supply it sold into pools, the cluster level, and the outcome a day later. Selling is a transfer from the deployer into a known pool after the transfer that seeded it.</p>
+
+    <h3 id="alerts">Watchlist and alerts</h3>
+    <p>The watchlist lives in your browser. Polaris checks it on a timer and raises an alert for three events:</p>
+    <pre><code>liquidity opened  the first transfer into any v2, v3 or v4 pool of the token
+deployer sold     the deployer sends 0.5%+ of supply into a pool
+score drop        the North Score falls 15 points under its last-hour high</code></pre>
+
+    <h3 id="stocks">Stock-pair integrity</h3>
+    <p>Robinhood publishes the canonical stock token contracts in its asset registry. Every new pool and every newborn token using a stock ticker is checked against that list: the canonical contract is marked as such, anything else using the ticker is an imitation. On testnet the five stock tokens Robinhood issues there are the reference.</p>
+
+    <h3 id="launchpads">Launchpad coverage</h3>
+    <p>A token's launchpad is the contract its creation transaction called; a token deployed straight from a wallet is a direct deploy. Venues are the factories that open pools: Uniswap v2 <code>PairCreated</code>, v3 <code>PoolCreated</code> and v4 <code>PoolManager.Initialize</code>, and every fork that emits the same events. Contracts with verified source carry their name.</p>
+
+    <h3 id="record">Track record</h3>
+    <p>Every token is graded a day after birth against the score it showed at one hour old:</p>
+    <pre><code>thrived  holders doubled from 1h and reached 25+
+rugged   the deployer sold 25%+ into pools, or holders fell below half their peak
+faded    everything else</code></pre>
+    <p>The record groups the grades by early score band, so the open question stays visible: do strong early pulls really last longer.</p>
+
+    <h3 id="tier">Holder tier</h3>
+    <pre><code>              watch slots   alert checks   score history
+public        5             every 60s      last 6h
+holder        25            every 15s      full 48h
+
+holder = the connected wallet holds 10,000 $POLARIS (balance read only, no staking)</code></pre>
+
     <h2 id="contracts">Contracts</h2>
     <p>Every contract is a UUPS implementation behind a <code>PolarisProxy</code> (ERC-1967). Addresses never change across upgrades, and only the owner can authorise one. All sources are verified on the explorer.</p>
     <div class="dtable" id="dContracts"></div>
@@ -82,7 +126,7 @@ holder boost = ×1.5 while the wallet holds 10,000 $POLARIS</code></pre>
 <footer class="foot">
   <div class="wrap">
     <div><a class="brand" href="/"><img class="logo" src="/assets/logo-96.jpg" alt="" width="28" height="28">Polaris Terminal</a></div>
-    <div><h4>Terminal</h4><ul><li><a href="/app#radar">Drift Radar</a></li><li><a href="/app#vaults">North Vaults</a></li><li><a href="/app#beacon">Beacon</a></li></ul></div>
+    <div><h4>Terminal</h4><ul><li><a href="/app#radar">Drift Radar</a></li><li><a href="/app#vaults">North Vaults</a></li><li><a href="/app#beacon">Beacon</a></li><li><a href="/app#record">Track record</a></li></ul></div>
     <div><h4>Build</h4><ul><li><a href="/">Home</a></li><li><a href="https://github.com/Polaris-Terminal/polaris-terminal" target="_blank" rel="noopener">GitHub</a></li></ul></div>
     <div><h4>Network</h4><ul><li><a data-explorer target="_blank" rel="noopener">Explorer</a></li></ul></div>
     <div class="legal"><span>Polaris Terminal 2026</span><span data-net-tag>Testnet</span></div>

@@ -10,6 +10,7 @@ import { scramble, decodeOnHover, ripples, clock } from "./fx.js";
 import { mountConsole, pad, meter } from "./console.js";
 import { startTour, seenTour } from "./tour.js";
 import { mountSpace } from "./space.js";
+import { mountOrbit } from "./orbit.js";
 
 boot();
 mountSpace($("#space"));
@@ -37,7 +38,8 @@ setText("#fUnit", A.symbol);
 setText("#vBalL", `Wallet ${A.symbol}`);
 
 // ---------- tabs ----------
-const TITLES = { radar: "Drift Radar", vaults: "North Vaults", beacon: "Beacon" };
+let signals = null; // v2.0 Orbit instruments, mounted once the radar and the shell helpers exist
+const TITLES = { radar: "Drift Radar", vaults: "North Vaults", beacon: "Beacon", watch: "Watchlist", deployer: "Deployer Profile", record: "Track Record", venues: "Launchpads" };
 function route() {
   const tab = TITLES[location.hash.slice(1)] ? location.hash.slice(1) : "radar";
   $$(".view").forEach((v) => (v.hidden = v.id !== "v-" + tab));
@@ -47,19 +49,21 @@ function route() {
   document.title = `${TITLES[tab]} · Polaris`;
   document.body.classList.remove("side-open");
   if (tab === "vaults") requestAnimationFrame(drawChart);
+  signals?.route(tab);
 }
 addEventListener("hashchange", route);
 route();
 $("#sideToggle").addEventListener("click", () => document.body.classList.toggle("side-open"));
 $(".main").addEventListener("click", (e) => { if (!e.target.closest("#sideToggle")) document.body.classList.remove("side-open"); });
-// / opens the shell, ? replays the tour, 1-3 switch views, j/k walk the drift table
+// / opens the shell, ? replays the tour, 1-7 switch views, j/k walk the drift table, w watches the locked token
 addEventListener("keydown", (e) => {
   if (e.key === "Escape" && $("#qc").classList.contains("on")) return shell(false);
   if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.("input, textarea, select, [contenteditable]")) return;
   if (e.key === "/" || e.key === "`") { e.preventDefault(); return shell(true); }
   if (e.key === "?") return runTour();
-  const tab = { 1: "radar", 2: "vaults", 3: "beacon" }[e.key];
+  const tab = { 1: "radar", 2: "vaults", 3: "beacon", 4: "watch", 5: "deployer", 6: "record", 7: "venues" }[e.key];
   if (tab) return (location.hash = tab);
+  if (e.key === "w" && current && !$("#v-radar").hidden) return $("#dWatch").click();
   if ((e.key === "j" || e.key === "k") && !$("#v-radar").hidden && tokens.length) {
     const rows = $$("#tRows .trow"), i = rows.findIndex((r) => r.classList.contains("on"));
     const next = rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === "j" ? 1 : -1)))];
@@ -127,13 +131,14 @@ function detail(t) {
   $("#dLink").href = `${CONFIG.chain.explorer}/token/${t.address}`;
   radar.select(t);
   $$("#tRows .trow").forEach((r) => r.classList.toggle("on", r.dataset.a === t.address));
+  signals?.detail(t);
 }
 
 function table() {
   const list = [...tokens].sort((a, b) => sortBy === "age" ? a.ageMin - b.ageMin : sortBy === "holders" ? b.holders - a.holders : b.score - a.score);
   $("#tRows").innerHTML = list.map((t, i) => `<div class="trow${t === current ? " on" : ""}" data-a="${t.address}">
     <span class="rk">${i + 1}</span>
-    <span class="tk"><b>${t === tokens[0] ? TICK + " " : ""}${esc(t.name)}</b><small>$${esc(t.symbol)}</small></span>
+    <span class="tk"><b>${t === tokens[0] ? TICK + " " : ""}${esc(t.name)}</b><small>$${esc(t.symbol)}</small>${t.stock && !t.stock.official ? `<i class="flag">fake ${esc(t.stock.ticker)}</i>` : t.stock ? `<i class="flag ok">stock</i>` : ""}</span>
     <span>${age(t.ageMin)}</span><span>${int(t.holders) ?? "first"}</span><span>${int(t.mints) ?? "first"}</span>
     <span class="sc"><span>${t.score}</span><span class="bar${t === tokens[0] ? " lead" : ""}"><i style="--w:${t.score}%"></i></span></span></div>`).join("");
   $$("#tRows .trow").forEach((r) => {
@@ -150,8 +155,10 @@ $$("#sortSeg button").forEach((b) => b.addEventListener("click", () => {
 }));
 
 function drift() {
-  api("/api/drift?limit=100", (d) => {
+  const pad = signals?.pad() || "";
+  api(`/api/drift?limit=100${pad ? "&launchpad=" + pad : ""}`, (d) => {
     if (!d?.tokens?.length) return;
+    if (pad !== (signals?.pad() || "")) return; // the filter changed while this answer was in flight
     const seen = new Set(tokens.map((t) => t.address));
     if (!seen.size) log(`scan: <b>${d.tracked}</b> tokens in the ${d.window}h window`);
     else d.tokens.filter((t) => !seen.has(t.address)).forEach((t) => log(`<b>+ $${esc(t.symbol)}</b> born · NS ${t.score}`));
@@ -172,6 +179,7 @@ function drift() {
 }
 drift();
 setInterval(drift, 20_000);
+addEventListener("polaris:pad", () => { tokens = []; current = null; drift(); });
 
 // ---------- vaults ----------
 let V = null, chosen = null, bal = null, mode = "dep", maxMode = false, lastPick = null, orbs = [];
@@ -462,7 +470,7 @@ function xpCurve(day) {
 xpCurve(1);
 
 // ---------- drop-down shell: commands drive the terminal; nothing here signs on its own ----------
-const VIEWS = { radar: "radar", drift: "radar", vaults: "vaults", vault: "vaults", beacon: "beacon" };
+const VIEWS = { radar: "radar", drift: "radar", vaults: "vaults", vault: "vaults", beacon: "beacon", watch: "watch", watchlist: "watch", deployer: "deployer", record: "record", launchpads: "venues", venues: "venues" };
 const findVault = (name) => V?.ranked.find((v) => v.name.toLowerCase() === String(name).toLowerCase());
 const view = (tab) => { if (location.hash.slice(1) !== tab) { location.hash = tab; route(); } };
 function prepare(m, amt, name, out) {
@@ -482,7 +490,7 @@ function prepare(m, amt, name, out) {
   out(`${m === "dep" ? "deposit" : "withdrawal"} of <b>${esc(amt)} ${A.symbol}</b> ${m === "dep" ? "into" : "from"} <b>${esc(chosen.name)}</b> is set up · press <b>${esc(go.textContent)}</b> to sign it in your wallet`);
 }
 const SH_HELP = [
-  ["cd radar|vaults|beacon", "switch instrument (or 1, 2, 3)"],
+  ["cd radar|vaults|beacon|watch|record", "switch instrument (or 1 to 7)"],
   ["top [n]", "strongest newborn tokens"],
   ["token <symbol>", "lock a token on the radar"],
   ["sort score|new|holders", "re-sort the drift table"],
@@ -494,14 +502,27 @@ const SH_HELP = [
   ["connect · whoami", "your wallet session"],
   ["tour · theme · clear", "walkthrough, colours, clean screen"],
 ];
+// lock a token from anywhere (watchlist, deployer, record); tokens outside the top 100 are read on demand
+async function lock(a) {
+  view("radar");
+  const t = tokens.find((x) => x.address === a);
+  if (t) return detail(t);
+  const d = await fetch(`${CONFIG.api}/api/token?a=${a}`).then((r) => r.json()).catch(() => null);
+  if (d?.tracked) detail(d.token);
+  else toast("That token has left the 48h window", true);
+}
+signals = mountOrbit({ log, view, tokens: () => tokens, lock });
+if (current) signals.detail(current);
+signals.route(location.hash.slice(1));
+
 const sh = mountConsole($("#qc"), {
   prompt: () => `${$("#whoami").textContent}:~/${$("#pageTitle").textContent}$`,
   commands: {
     help: (_, out) => {
       out("<b>polaris shell</b> · commands drive the terminal · tab completes · esc closes");
-      SH_HELP.forEach(([c, d]) => out(`<span class="hc">${esc(c)}</span><span class="dim">${esc(d)}</span>`, "help"));
+      [...SH_HELP, ...signals.help].forEach(([c, d]) => out(`<span class="hc">${esc(c)}</span><span class="dim">${esc(d)}</span>`, "help"));
     },
-    cd: ([v], out) => { const tab = VIEWS[String(v).toLowerCase()]; if (!tab) return out("usage: cd radar|vaults|beacon", "err"); view(tab); out(`~/${tab}`, "dim"); },
+    cd: ([v], out) => { const tab = VIEWS[String(v).toLowerCase()]; if (!tab) return out("usage: cd radar|vaults|beacon|watch|deployer|record|venues", "err"); view(tab); out(`~/${tab}`, "dim"); },
     top: ([n], out) => {
       if (!tokens.length) return out("the drift is still loading", "dim");
       view("radar");
@@ -566,6 +587,7 @@ const sh = mountConsole($("#qc"), {
     theme: (_, out) => { $("#theme").click(); out(`theme: ${document.documentElement.dataset.theme || "dark"}`, "dim"); },
     clear: () => sh.clear(),
     sudo: (_, out) => out("permission denied: Polaris answers to no one", "err"),
+    ...signals.commands,
   },
 });
 let shellOpened = false;
@@ -585,10 +607,10 @@ $("#qcOpen").addEventListener("click", () => shell());
 const TOUR = [
   { title: "Welcome to the terminal", text: "Polaris reads Robinhood Chain live: every newborn token, the stablecoin vaults and a daily on-chain check-in. Here is a 30 second tour. Leave any time with Got it." },
   { target: "#qcOpen", title: "This is a real shell", text: "Click the prompt or press / to drop the shell down. Try top, token, vault or deposit 1000. Commands move the terminal for you; anything on-chain still waits for your signature." },
-  { target: ".side-nav", title: "Three instruments", text: "Drift Radar, North Vaults and the Beacon. Switch here or with the keys 1, 2 and 3." },
+  { target: ".side-nav", title: "Seven instruments", text: "Drift Radar, North Vaults and the Beacon, plus the Orbit set from v2.0: watchlist alerts, deployer profiles, the track record and launchpad coverage. Switch with the keys 1 to 7." },
   { target: ".stats", title: "The pulse", text: "Live counters. Hover the bars under Born in the last hour to see how many tokens were born in each of the last 24 hours." },
   { target: ".radar-panel", title: "The Drift Radar", text: "Every token born in the last 48 hours is a blip. The closer to Polaris at the centre, the stronger its North Score. Hover to read one, click to lock on." },
-  { target: "#detail", title: "Why it scores", text: "The locked token's North Score split into holders, mint activity, freshness and source, all read from chain data." },
+  { target: "#detail", title: "Why it scores", text: "The locked token's North Score split into holders, mint activity, freshness and source, its score history, clusters and what its deployer did. Press Watch (or w) for alerts on it." },
   { target: ".table-panel", title: "Every newborn, ranked", text: "Sort by score, age or holders. Hover a row and the radar draws a bearing to it; walk the list with j and k." },
   { target: ".side-foot", title: "tail -f", text: "Everything the terminal sees lands here as it happens: head blocks, newborn tokens, your transactions." },
   { target: ".status", title: "Status line", text: "Network, head block, RPC round trip and UTC time. A red dot means the RPC stopped answering and Polaris is retrying." },
