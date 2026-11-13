@@ -10,10 +10,9 @@ case "$ENV" in
            RPCS="https://rpc.testnet.chain.robinhood.com"; EXPLORER=https://explorer.testnet.chain.robinhood.com; SOURCIFY= ; EXTRA= ;;
   mainnet) NETWORK=robinhood; HOSTS='Host(`polaristerminal.tech`) || Host(`www.polaristerminal.tech`)'; DOMAIN=polaristerminal.tech; PORT=3801
            RPCS="https://rpc.mainnet.chain.robinhood.com https://robinhood.drpc.org https://robinhood-rpc.publicnode.com"; EXPLORER=https://robinhoodchain.blockscout.com
-           # the explorer API is behind a bot wall: verification is checked on Sourcify, reads use the keyed Blockscout API
+           # the explorer API is behind a bot wall: the API reads the chain and Sourcify; an optional Blockscout key makes pulse stats exact
            SOURCIFY=4663; BLOCKSCOUT_API_KEY="${BLOCKSCOUT_API_KEY:-$(sed -n 's/^BLOCKSCOUT_API_KEY=//p' "$(dirname "$0")/../.env.deployer" 2>/dev/null)}"
-           [ -n "${BLOCKSCOUT_API_KEY:-}" ] || echo "! BLOCKSCOUT_API_KEY not set: the drift radar stays empty until it is"
-           EXTRA="EXPLORER_API_KEY=${BLOCKSCOUT_API_KEY:-}\nHOLDERS_MINUTES=30\nSEED_BLOCKS=72000\n" ;; # ~2h of 0.1s blocks; keeps the metered API inside its free tier
+           EXTRA="${BLOCKSCOUT_API_KEY:+EXPLORER_API_KEY=$BLOCKSCOUT_API_KEY\n}SEED_BLOCKS=72000\n" ;; # seed ~2h of 0.1s blocks
   *) echo "unknown env $ENV"; exit 1 ;;
 esac
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

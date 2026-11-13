@@ -5,12 +5,12 @@ import http from "node:http";
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, createReadStream } from "node:fs";
 import { join, extname, resolve } from "node:path";
 import { northScore, hourly } from "./score.mjs";
-import { abiString } from "./abi.mjs";
+import { abiString, transferStats } from "./abi.mjs";
 
 const NETS = {
   robinhoodTestnet: { rpc: "https://rpc.testnet.chain.robinhood.com", explorer: "https://explorer.testnet.chain.robinhood.com" },
-  // The mainnet explorer's own API sits behind a bot wall, so mainnet reads go through the keyed Blockscout API
-  // and contract verification is read from Sourcify.
+  // The mainnet explorer's API sits behind a bot wall, so mainnet reads the drift straight from the chain,
+  // checks source verification on Sourcify and only uses the (keyed, metered) Blockscout API for pulse stats if a key is set.
   robinhood: { rpc: "https://rpc.mainnet.chain.robinhood.com", explorer: "https://robinhoodchain.blockscout.com", api: "https://api.blockscout.com/4663/api/v2", sourcify: 4663 },
 };
 const NETWORK = process.env.NETWORK || "robinhoodTestnet";
@@ -18,8 +18,7 @@ const RPC = process.env.RPC_URL || NETS[NETWORK].rpc;
 const EXPLORER = process.env.EXPLORER_URL || NETS[NETWORK].explorer;
 const EXPLORER_API = process.env.EXPLORER_API || NETS[NETWORK].api || EXPLORER + "/api/v2";
 const EXPLORER_KEY = process.env.EXPLORER_API_KEY;
-const SOURCIFY = NETS[NETWORK].sourcify;
-const HOLDERS_MS = +(process.env.HOLDERS_MINUTES || 2.5) * 60e3; // the keyed API is metered, so mainnet refreshes less often
+const SOURCIFY = NETS[NETWORK].sourcify; // also marks a chain-read network
 const PORT = +(process.env.PORT || 8787);
 const HOST = process.env.HOST || "127.0.0.1";
 const DATA = resolve(process.env.DATA_DIR || "data");
@@ -51,16 +50,18 @@ const save = () => writeFileSync(STATE_FILE, JSON.stringify(state));
 
 // ---------- upstream helpers ----------
 let rpcId = 0;
-async function rpc(method, params) {
+async function rpc(method, params, tries = 3) {
   const r = await fetch(RPC, {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
     signal: AbortSignal.timeout(15_000),
   });
   const j = await r.json();
+  if (j.error && tries > 1 && /too many/i.test(j.error.message)) return sleep(1500).then(() => rpc(method, params, tries - 1));
   if (j.error) throw new Error(`${method}: ${j.error.message}`);
   return j.result;
 }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Blockscout is rate limited, so every explorer call goes through one paced queue.
 let explorerChain = Promise.resolve();
@@ -87,6 +88,7 @@ const queue = [];
 // so the radar fills from the freshest blocks instead of waiting on the whole backlog.
 async function enrichWorker() {
   for (;;) {
+    if (SOURCIFY && !state.pulse.blockTime) { await sleep(1000); continue; } // chain reads size the window from the block time
     const a = queue.pop();
     if (!a) { await new Promise((r) => setTimeout(r, 1000)); continue; }
     await enrich(a).catch((e) => { pending.delete(a); console.warn("enrich", a, e.message); });
@@ -113,36 +115,67 @@ async function scanMints() {
   }
 }
 
-// ERC-20 string/uint reads straight from the chain, so dating a token costs one explorer call
-const call = (to, data) => rpc("eth_call", [{ to, data }, "latest"]).catch(() => "0x");
+const call = (to, data) => rpc("eth_call", [{ to, data }, "latest"]);
+const sourcified = (a) => fetch(`https://sourcify.dev/server/v2/contract/${SOURCIFY}/${a}`, { signal: AbortSignal.timeout(15_000) })
+  .then((r) => (r.ok ? r.json() : null)).then((j) => !!j?.match);
 
 async function enrich(a) {
+  if (SOURCIFY) return enrichFromChain(a);
   const addr = await explorer(`/addresses/${a}`);
   const txHash = addr?.creation_transaction_hash || addr?.creation_tx_hash;
   if (!txHash) { state.old[a] = true; pending.delete(a); return; }
-  const tx = await rpc("eth_getTransactionByHash", [txHash]);
-  const block = tx && await rpc("eth_getBlockByNumber", [tx.blockNumber, false]);
-  const bornAt = block && Number(block.timestamp) * 1000;
+  const tx = await explorer(`/transactions/${txHash}`);
+  const bornAt = Date.parse(tx?.timestamp);
   if (!bornAt || Date.now() - bornAt > WINDOW_MS) { state.old[a] = true; pending.delete(a); return; }
-  const [name, symbol, decimals, supply] = await Promise.all(["0x06fdde03", "0x95d89b41", "0x313ce567", "0x18160ddd"].map((d) => call(a, d)));
-  const sym = symbol.length > 2 && abiString(symbol).trim();
-  if (!sym || decimals.length < 66) { state.old[a] = true; pending.delete(a); return; } // not an ERC-20
+  const tok = await explorer(`/tokens/${a}`);
+  if (!tok || tok.type !== "ERC-20" || !tok.symbol) { state.old[a] = true; pending.delete(a); return; }
   state.tokens[a] = {
-    address: addr.hash || a, name: abiString(name).trim() || sym, symbol: sym, decimals: Number(BigInt(decimals)) || 18,
-    holders: 0, supply: BigInt(supply.length > 2 ? supply : 0).toString(), bornAt, bornBlock: Number(tx.blockNumber),
+    address: addr.hash || a, name: tok.name || tok.symbol, symbol: tok.symbol, decimals: +tok.decimals || 18,
+    holders: +tok.holders_count || 0, supply: tok.total_supply, bornAt, bornBlock: +tx.block_number || +tx.block,
     creator: addr.creator_address_hash, verified: !!addr.is_verified, mints: 1, lastMint: Date.now(),
   };
   pending.delete(a);
 }
 
-// Holder counts for the tokens on the radar; the rest of the window only ages out.
+// A token's Transfer logs since `fromBlock`; null once it passes the RPC's 10k log cap.
+const transfers = (a, fromBlock) => rpc("eth_getLogs", [{ address: a, fromBlock: hex(fromBlock), toBlock: "latest", topics: [TRANSFER] }])
+  .catch((e) => { if (/exceeds limit/.test(e.message)) return null; throw e; });
+
+// Chain-read networks: a token is newborn when all of its supply was minted inside the window, and that same
+// history gives exact holders. shortcut: tokens past 10k transfers in the window count as old; page the logs if hot launches go missing.
+async function enrichFromChain(a) {
+  const old = () => { state.old[a] = true; pending.delete(a); };
+  const logs = await transfers(a, Math.max(1, state.head - Math.round(WINDOW_MS / 1000 / state.pulse.blockTime)));
+  const supply = logs && await call(a, "0x18160ddd").catch(() => "0x");
+  const h = logs && transferStats(logs);
+  if (!h?.mints || supply.length < 66 || h.minted !== BigInt(supply)) return old();
+  const [name, symbol, decimals] = await Promise.all(["0x06fdde03", "0x95d89b41", "0x313ce567"].map((d) => call(a, d).catch(() => "0x")));
+  const sym = symbol.length > 2 && abiString(symbol).trim();
+  if (!sym || decimals.length < 66) return old(); // not an ERC-20
+  const first = logs.find((l) => l.topics[1] === ZERO_TOPIC);
+  const [block, tx, verified] = await Promise.all([
+    rpc("eth_getBlockByNumber", [first.blockNumber, false]), rpc("eth_getTransactionByHash", [first.transactionHash]), sourcified(a).catch(() => false),
+  ]);
+  state.tokens[a] = {
+    address: a, name: abiString(name).trim() || sym, symbol: sym, decimals: Number(BigInt(decimals)) || 18,
+    holders: h.holders, transfers: h.transfers, supply: BigInt(supply).toString(), bornAt: Number(block.timestamp) * 1000,
+    bornBlock: Number(first.blockNumber), creator: tx?.from, verified, mints: h.mints, lastMint: Date.now(),
+  };
+  pending.delete(a);
+}
+
 async function refreshHolders() {
   const now = Date.now();
-  for (const [a, t] of Object.entries(state.tokens)) if (now - t.bornAt > WINDOW_MS) { delete state.tokens[a]; state.old[a] = true; }
-  for (const { address } of drift(40).tokens) {
-    const a = address.toLowerCase(), t = state.tokens[a];
+  for (const [a, t] of Object.entries(state.tokens)) {
+    if (now - t.bornAt > WINDOW_MS) { delete state.tokens[a]; state.old[a] = true; continue; }
+    if (SOURCIFY) continue;
     const c = await explorer(`/tokens/${a}/counters`).catch(() => null);
-    if (c && t) { t.holders = +c.token_holders_count || t.holders; t.transfers = +c.transfers_count || t.transfers; }
+    if (c) { t.holders = +c.token_holders_count || t.holders; t.transfers = +c.transfers_count || t.transfers; }
+  }
+  // chain-read: replay the full history of the tokens on the radar
+  if (SOURCIFY) for (const { address } of drift(40).tokens) {
+    const t = state.tokens[address], logs = t && await transfers(address, t.bornBlock).catch(() => null);
+    if (logs) Object.assign(t, { holders: transferStats(logs).holders, transfers: logs.length });
   }
 }
 
@@ -158,6 +191,24 @@ async function refreshStats() {
   });
   const chart = await explorer("/stats/charts/transactions").catch(() => null);
   if (chart?.chart_data) state.pulse.txHistory = chart.chart_data.slice(0, 30).reverse().map((p) => [p.date, +p.transactions_count]);
+}
+
+// Chain-read pulse: block time and gas from the RPC; transactions per day estimated from randomly sampled blocks.
+async function chainPulse() {
+  const head = Number(await rpc("eth_blockNumber", []));
+  const [now, back] = await Promise.all([head, head - 100_000].map((n) => rpc("eth_getBlockByNumber", [hex(n), false])));
+  const blockTime = (Number(now.timestamp) - Number(back.timestamp)) / 100_000, perDay = 86_400 / blockTime;
+  const samples = (state.txSamples ||= []);
+  for (let i = 0; i < 24; i++) {
+    const b = await rpc("eth_getBlockByNumber", [hex(head - Math.floor(Math.random() * perDay)), false]);
+    samples.push(b.transactions.length - 1); // every Arbitrum block opens with one internal ArbOS tx
+  }
+  samples.splice(0, samples.length - 600);
+  const gwei = Number(BigInt(await rpc("eth_gasPrice", []))) / 1e9;
+  Object.assign(state.pulse, {
+    blockTime, gasGwei: +gwei.toPrecision(3), txEstimated: true,
+    txToday: Math.round((samples.reduce((s, x) => s + x, 0) / samples.length) * perDay),
+  });
 }
 
 // ---------- beacon leaderboard ----------
@@ -184,8 +235,6 @@ async function scanBeacon() {
 }
 
 // ---------- contract registry (verification status) ----------
-const sourcified = (a) => fetch(`https://sourcify.dev/server/v2/contract/${SOURCIFY}/${a}`, { signal: AbortSignal.timeout(15_000) })
-  .then((r) => (r.ok ? r.json() : null)).then((j) => !!j?.match);
 const isVerified = (a) => (SOURCIFY ? sourcified(a) : explorer(`/addresses/${a}`).then((p) => !!p?.is_verified));
 async function refreshContracts() {
   for (const [key, c] of Object.entries(deployments?.contracts || {})) {
@@ -269,8 +318,8 @@ function every(ms, fn, name) {
 enrichWorker();
 every(12_000, scanMints, "mints");
 every(15_000, scanBeacon, "beacon");
-every(HOLDERS_MS, refreshHolders, "holders");
-every(300_000, refreshStats, "stats");
+every(150_000, refreshHolders, "holders");
+every(300_000, SOURCIFY && !EXPLORER_KEY ? chainPulse : refreshStats, "stats");
 every(600_000, refreshContracts, "contracts");
 setInterval(save, 60_000);
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { save(); process.exit(0); });

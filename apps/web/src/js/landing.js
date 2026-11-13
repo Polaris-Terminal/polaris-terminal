@@ -98,7 +98,8 @@ function pulse() {
     lastPulse = p;
     tween("#pBorn", p.drift?.born24h);
     setText("#pBornH", p.drift?.born1h ? `${p.drift.born1h} in the last hour` : null);
-    tween("#pTx", p.txToday, (v) => compact(v));
+    tween("#pTx", p.txToday, (v) => (p.txEstimated ? "~" : "") + compact(v));
+    if (p.txEstimated) setText("#pTxD", "estimated from sampled blocks");
     if (p.txHistory?.length > 1) {
       const prev = p.txHistory.at(-2)[1], last = p.txHistory.at(-1)[1];
       if (prev && last) setText("#pTxD", `${last >= prev ? "+" : "−"}${Math.abs(((last - prev) / prev) * 100).toFixed(1)}% vs the day before`);
@@ -342,7 +343,7 @@ const term = mountConsole($("#term"), {
       const p = (await api("/api/pulse")) || lastPulse;
       if (!p) return out("pulse unavailable, try again", "err");
       out(`  block       <b>#${(p.block || 0).toLocaleString("en-US")}</b>`);
-      out(`  tx today    ${esc(compact(p.txToday) ?? "n/a")}`);
+      out(`  tx today    ${p.txEstimated ? "~" : ""}${esc(compact(p.txToday) ?? "n/a")}`);
       out(`  block time  ${p.blockTime ? (p.blockTime < 1 ? Math.round(p.blockTime * 1000) + "ms" : p.blockTime.toFixed(1) + "s") : "n/a"}`);
       out(`  gas         ${p.gasGwei ? esc(p.gasGwei) + " gwei" : "n/a"}`);
     },
