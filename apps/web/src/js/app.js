@@ -6,8 +6,25 @@ import { mountRadar } from "./radar.js";
 import { lineChart, projection } from "./chart.js";
 import { loadVaults, loadBalances, loadBeacon } from "./chain.js";
 import { northScore } from "./score.js";
+import { scramble, decodeOnHover, cursorHud, spotlight, ripples, clock } from "./fx.js";
 
 boot();
+$$(".stat, .panel").forEach((el) => el.classList.add("spot"));
+cursorHud($("#hud"));
+spotlight(".spot");
+ripples(".btn, .icon-btn, .seg button, .rank-row, .side-nav a");
+decodeOnHover(".btn, .side-nav a, .st-tabs a");
+clock($("#clock"));
+
+// ---------- activity log: a tail -f of what the terminal sees. msg is HTML, so chain data must be escaped ----------
+function log(msg, cls = "") {
+  const box = $("#log"), ln = document.createElement("div");
+  ln.className = cls;
+  ln.innerHTML = `<span class="t">${new Date().toISOString().slice(11, 19)}</span> ${msg}`;
+  box.append(ln);
+  while (box.childElementCount > 40) box.firstElementChild.remove();
+}
+log(`session open · ${esc(CONFIG.chain.name.toLowerCase())}`, "dim");
 $$("[data-net-tag]").forEach((el) => (el.textContent = CONFIG.testnet ? "Testnet" : "Mainnet"));
 $$("[data-explorer]").forEach((a) => (a.href = CONFIG.chain.explorer));
 $$("[data-faucet]").forEach((a) => (CONFIG.chain.faucet ? (a.href = CONFIG.chain.faucet) : a.remove()));
@@ -21,8 +38,9 @@ const TITLES = { radar: "Drift Radar", vaults: "North Vaults", beacon: "Beacon" 
 function route() {
   const tab = TITLES[location.hash.slice(1)] ? location.hash.slice(1) : "radar";
   $$(".view").forEach((v) => (v.hidden = v.id !== "v-" + tab));
-  $$(".side-nav a[data-tab]").forEach((a) => a.classList.toggle("on", a.dataset.tab === tab));
-  $("#pageTitle").textContent = TITLES[tab];
+  $$("a[data-tab]").forEach((a) => a.classList.toggle("on", a.dataset.tab === tab));
+  $("#pageTitle").textContent = tab;
+  scramble($(".top-title .path"), 300);
   document.title = `${TITLES[tab]} · Polaris`;
   document.body.classList.remove("side-open");
   if (tab === "vaults") requestAnimationFrame(drawChart);
@@ -31,14 +49,31 @@ addEventListener("hashchange", route);
 route();
 $("#sideToggle").addEventListener("click", () => document.body.classList.toggle("side-open"));
 $(".main").addEventListener("click", (e) => { if (!e.target.closest("#sideToggle")) document.body.classList.remove("side-open"); });
+// 1-3 switch views, j/k walk the drift table
+addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.("input, textarea, select, [contenteditable]")) return;
+  const tab = { 1: "radar", 2: "vaults", 3: "beacon" }[e.key];
+  if (tab) return (location.hash = tab);
+  if ((e.key === "j" || e.key === "k") && !$("#v-radar").hidden && tokens.length) {
+    const rows = $$("#tRows .trow"), i = rows.findIndex((r) => r.classList.contains("on"));
+    const next = rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === "j" ? 1 : -1)))];
+    detail(tokens.find((t) => t.address === next.dataset.a));
+    next.scrollIntoView({ block: "nearest" });
+  }
+});
 
 // ---------- network ----------
+let polls = 0;
 async function block() {
   try {
-    const b = Number(BigInt(await rpc("eth_blockNumber")));
+    const t0 = performance.now(), b = Number(BigInt(await rpc("eth_blockNumber")));
     $("#netBlock").textContent = "#" + b.toLocaleString("en-US");
+    setText("#stLat", `rpc ${Math.round(performance.now() - t0)}ms`);
+    if ($("#netDot").classList.contains("off")) log("rpc back online", "ok");
     $("#netDot").classList.remove("off");
+    if (polls++ % 4 === 0) log(`head #${b.toLocaleString("en-US")}`, "dim");
   } catch {
+    if (!$("#netDot").classList.contains("off")) log("rpc unreachable, retrying", "err");
     $("#netDot").classList.add("off");
     $("#netBlock").textContent = "reconnecting";
   }
@@ -90,6 +125,9 @@ $$("#sortSeg button").forEach((b) => b.addEventListener("click", () => {
 function drift() {
   api("/api/drift?limit=100", (d) => {
     if (!d?.tokens?.length) return;
+    const seen = new Set(tokens.map((t) => t.address));
+    if (!seen.size) log(`scan: <b>${d.tracked}</b> tokens in the ${d.window}h window`);
+    else d.tokens.filter((t) => !seen.has(t.address)).forEach((t) => log(`<b>+ $${esc(t.symbol)}</b> born · NS ${t.score}`));
     tokens = d.tokens;
     if (current) current = tokens.find((t) => t.address === current.address) || null;
     radar.set(tokens);
@@ -108,12 +146,13 @@ drift();
 setInterval(drift, 20_000);
 
 // ---------- vaults ----------
-let V = null, chosen = null, bal = null, mode = "dep", maxMode = false;
+let V = null, chosen = null, bal = null, mode = "dep", maxMode = false, lastPick = null;
 
 async function vaults() {
   try { V = await loadVaults(); } catch (e) { return console.warn("vaults", e); }
   if (!V.ranked.length) return;
   chosen = V.ranked.find((v) => v.address === chosen?.address) || V.pick;
+  if (V.pick.address !== lastPick) { lastPick = V.pick.address; log(`north pick → <b>${esc(V.pick.name)}</b> ${pct(V.pick.apy)}`); }
   const maxS = V.pick.score;
   $("#rankRows").innerHTML = V.ranked.map((v, i) => `
     <button class="rank-row${v === chosen ? " on" : ""}" data-a="${v.address}">
@@ -219,6 +258,7 @@ async function runSteps(title, steps) {
       lis[i].querySelector("small").textContent = "sign in wallet";
       const { hash } = await sendTx(steps[i].to, steps[i].data);
       lis[i].classList.add("done");
+      log(`tx ${short(hash)} <b>confirmed</b>`);
       lis[i].querySelector("small").innerHTML = `<a href="${CONFIG.chain.explorer}/tx/${hash}" target="_blank" rel="noopener">confirmed</a>`;
     }
     $("#txTitle").textContent = "All steps confirmed";
@@ -227,6 +267,7 @@ async function runSteps(title, steps) {
     const li = lis.find((l) => !l.classList.contains("done"));
     if (li) { li.classList.add("err"); li.querySelector("small").textContent = "stopped"; }
     $("#txTitle").textContent = "Stopped";
+    log(esc(friendly(e)), "err");
     toast(friendly(e), true, e.hash);
   }
   done.hidden = false;
@@ -263,6 +304,7 @@ $("#dripBtn")?.addEventListener("click", async () => {
   try {
     const { hash } = await sendTx(A.address, sel("PolarisDollar", "drip"));
     toast(`10,000 ${A.symbol} landed in your wallet`, false, hash);
+    log(`drip <b>+10,000 ${A.symbol}</b>`);
     balances();
   } catch (e) { toast(friendly(e), true, e.hash); }
   b.disabled = false;
@@ -331,6 +373,7 @@ async function ping() {
   try {
     const { hash } = await sendTx(CONFIG.beacon, sel("PolarisBeacon", "ping"));
     toast("Ping landed on-chain", false, hash);
+    log("beacon <b>ping landed</b>");
     await beacon();
     board();
   } catch (e) {
@@ -342,4 +385,9 @@ $("#pingBtn").addEventListener("click", ping);
 $("#bigPing").addEventListener("click", ping);
 setInterval(board, 30_000);
 
-onWallet(() => { balances(); beacon(); board(); });
+onWallet(() => {
+  const who = wallet.account ? short(wallet.account) : "guest";
+  if ($("#whoami").textContent !== who + "@polaris") log(wallet.account ? `session <b>${who}</b>` : "session: guest", "dim");
+  $("#whoami").textContent = who + "@polaris";
+  balances(); beacon(); board();
+});

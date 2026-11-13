@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Polaris Terminal · Everything moves. Look up.</title>
 <meta name="description" content="The signal terminal for Robinhood Chain. Polaris reads every token born on-chain, scores where momentum points and routes stables into the strongest North Vault.">
-<meta name="theme-color" content="#090e0c">
+<meta name="theme-color" content="#010603">
 <meta property="og:title" content="Polaris Terminal">
 <meta property="og:description" content="Everything moves. Look up. The signal terminal for Robinhood Chain.">
 <meta property="og:image" content="/assets/og.jpg">
@@ -14,23 +14,47 @@
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Doto:wght@600..900&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Doto:wght@600..900&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/base.css">
 <link rel="stylesheet" href="/css/landing.css">
-<script>try{var t=localStorage.getItem("polaris-theme");t&&(document.documentElement.dataset.theme=JSON.parse(t))}catch(e){}</script>
+<script>try{var t=localStorage.getItem("polaris-theme");t&&(document.documentElement.dataset.theme=JSON.parse(t));if(sessionStorage.getItem("polaris-boot")||matchMedia("(prefers-reduced-motion: reduce)").matches)document.documentElement.classList.add("booted")}catch(e){}</script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" defer></script>
 <script src="https://unpkg.com/lenis@1.1.13/dist/lenis.min.js" defer></script>
 <script type="module" src="/js/landing.js"></script>
 </head>
-<body>
+<body class="landing">
+
+<!-- boot log, first visit of a session only -->
+<div class="boot" id="boot" aria-hidden="true">
+  <pre class="ascii">██████╗  ██████╗ ██╗      █████╗ ██████╗ ██╗███████╗
+██╔══██╗██╔═══██╗██║     ██╔══██╗██╔══██╗██║██╔════╝
+██████╔╝██║   ██║██║     ███████║██████╔╝██║███████╗
+██╔═══╝ ██║   ██║██║     ██╔══██║██╔══██╗██║╚════██║
+██║     ╚██████╔╝███████╗██║  ██║██║  ██║██║███████║
+╚═╝      ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚══════╝</pre>
+  <div class="boot-log"></div>
+  <p class="label boot-skip">press any key to skip</p>
+</div>
+
+<!-- the radar planet lives behind the whole page -->
+<div class="globe-layer" id="globeLayer" aria-hidden="true"><canvas id="globe"></canvas></div>
+<div class="globe-target" id="globeTarget" tabindex="0" role="application" aria-label="Radar planet. Drag or use the arrow keys to turn it, click or press Enter to send a ping, hover a spike to read a token"></div>
+<div class="globe-hint" id="globeHint">
+  <span class="label"><kbd>drag</kbd> rotate <kbd>click</kbd> ping · pings <b class="num" id="pingCount">0</b></span>
+  <button class="chip" id="globePause" aria-pressed="false">pause</button>
+  <button class="chip" id="globeReset">reset</button>
+</div>
+<div class="globe-tip" id="globeTip" hidden></div>
+<div class="hud" id="hud" aria-hidden="true"><div class="hud-ring"><span class="hud-xy"></span></div><div class="hud-lock"></div></div>
 
 <header class="nav">
   <div class="wrap">
     <a class="brand" href="/" aria-label="Polaris Terminal home"><span data-mark></span>Polaris Terminal<small class="hide-sm" data-net-tag>Testnet</small></a>
     <nav class="nav-links" aria-label="Main">
       <a href="#drift">Drift</a>
+      <a href="#console">Console</a>
       <a href="#instruments">Instruments</a>
       <a href="#vaults">Vaults</a>
       <a href="#beacon">Beacon</a>
@@ -38,6 +62,7 @@
       <a href="/docs">Docs</a>
     </nav>
     <div class="nav-right">
+      <span class="nav-clock" id="clock"></span>
       <button class="icon-btn" id="theme" aria-label="Switch theme"></button>
       <a class="btn btn-primary btn-sm hide-sm" href="/app">Open terminal</a>
       <button class="icon-btn menu-btn" aria-label="Menu" data-icon="menu"></button>
@@ -46,68 +71,90 @@
 </header>
 
 <main>
-  <!-- ================= hero ================= -->
-  <section class="hero" id="top">
-    <canvas class="hero-sky" id="sky" aria-label="A chrome Polaris star with the sky turning around it. Drag to spin, click to ping."></canvas>
-    <div class="wrap hero-grid">
-      <div class="hero-copy">
-        <p class="hero-tag"><span class="dot live"></span><span>Robinhood Chain</span><span class="muted">block</span><span class="num sk" id="hBlock">152,700,000</span></p>
-        <h1 class="display hero-h"><span class="sr">Everything moves. Look up.</span><span aria-hidden="true">Everything moves<svg class="stop" viewBox="0 0 10 10" aria-hidden="true"><path fill="currentColor" d="M5 0c.2 2.4.6 3.8 1.2 4.4C6.8 4.9 8.1 5 10 5c-1.9 0-3.2.2-3.8.7C5.6 6.2 5.2 7.6 5 10c-.2-2.4-.6-3.8-1.2-4.3C3.2 5.2 1.9 5 0 5c1.9 0 3.2-.1 3.8-.6C4.4 3.8 4.8 2.4 5 0z"/></svg><br>Look up<svg class="stop" viewBox="0 0 10 10" aria-hidden="true"><path fill="currentColor" d="M5 0c.2 2.4.6 3.8 1.2 4.4C6.8 4.9 8.1 5 10 5c-1.9 0-3.2.2-3.8.7C5.6 6.2 5.2 7.6 5 10c-.2-2.4-.6-3.8-1.2-4.3C3.2 5.2 1.9 5 0 5c1.9 0 3.2-.1 3.8-.6C4.4 3.8 4.8 2.4 5 0z"/></svg></span></h1>
-        <p class="lead">The signal terminal for Robinhood Chain. Polaris reads every token born on-chain, scores where the momentum points, and routes your stables into the strongest North Vault</p>
-        <div class="hero-cta">
-          <a class="btn btn-primary" href="/app">Open terminal<svg class="i arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
-          <a class="btn btn-ghost" href="#drift">Read the Drift</a>
-        </div>
+  <!-- ================= hero: the planet rises under the copy ================= -->
+  <section class="hero" id="top" data-story="hero">
+    <div class="wrap hero-copy">
+      <p class="hero-tag"><span class="dot live"></span><span>Robinhood Chain</span><span class="muted">block</span><span class="num sk" id="hBlock">152,700,000</span></p>
+      <p class="prompt" aria-hidden="true"><span class="ps1">guest@polaris</span><span class="muted">:~$</span> <span id="heroCmd">scan --chain robinhood --live</span><i class="caret"></i></p>
+      <h1 class="display hero-h"><span class="sr">Everything moves. Look up.</span><span aria-hidden="true">Everything moves<svg class="stop" viewBox="0 0 10 10" aria-hidden="true"><path fill="currentColor" d="M5 0c.2 2.4.6 3.8 1.2 4.4C6.8 4.9 8.1 5 10 5c-1.9 0-3.2.2-3.8.7C5.6 6.2 5.2 7.6 5 10c-.2-2.4-.6-3.8-1.2-4.3C3.2 5.2 1.9 5 0 5c1.9 0 3.2-.1 3.8-.6C4.4 3.8 4.8 2.4 5 0z"/></svg><br>Look up<svg class="stop" viewBox="0 0 10 10" aria-hidden="true"><path fill="currentColor" d="M5 0c.2 2.4.6 3.8 1.2 4.4C6.8 4.9 8.1 5 10 5c-1.9 0-3.2.2-3.8.7C5.6 6.2 5.2 7.6 5 10c-.2-2.4-.6-3.8-1.2-4.3C3.2 5.2 1.9 5 0 5c1.9 0 3.2-.1 3.8-.6C4.4 3.8 4.8 2.4 5 0z"/></svg></span></h1>
+      <p class="lead">The signal terminal for Robinhood Chain. Polaris reads every token born on-chain, scores where the momentum points, and routes your stables into the strongest North Vault</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="/app">Open terminal<svg class="i arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        <a class="btn btn-ghost" href="#console">Try the console</a>
       </div>
-      <p class="hero-hint label"><kbd>drag</kbd> to spin the star · <kbd>click</kbd> to ping · pings sent <span class="num" id="pingCount">1</span></p>
-    </div>
-
-    <div class="pulse wrap" aria-label="Live chain pulse">
-      <div class="pulse-cell"><span class="label">Born in the last 24h</span><b class="num sk" id="pBorn">120</b><small class="dim" id="pBornH">tokens on the radar</small></div>
-      <div class="pulse-cell"><span class="label">Transactions today</span><b class="num sk" id="pTx">1.1M</b><small class="dim" id="pTxD">across Robinhood Chain</small></div>
-      <div class="pulse-cell"><span class="label">North Pick yield</span><b class="num sk" id="pApy">9.2%</b><small class="dim" id="pApyN">best ranked vault</small></div>
-      <div class="pulse-cell"><span class="label">Block time</span><b class="num sk" id="pBt">0.2s</b><small class="dim" id="pGas">gas price</small></div>
     </div>
   </section>
+
+  <div class="pulse-strip" aria-label="Live chain pulse">
+    <div class="pulse wrap">
+      <div class="pulse-cell spot"><span class="label">Born in the last 24h</span><b class="num sk" id="pBorn">120</b><small class="dim" id="pBornH">tokens on the radar</small></div>
+      <div class="pulse-cell spot"><span class="label">Transactions today</span><b class="num sk" id="pTx">1.1M</b><small class="dim" id="pTxD">across Robinhood Chain</small></div>
+      <div class="pulse-cell spot"><span class="label">North Pick yield</span><b class="num sk" id="pApy">9.2%</b><small class="dim" id="pApyN">best ranked vault</small></div>
+      <div class="pulse-cell spot"><span class="label">Block time</span><b class="num sk" id="pBt">0.2s</b><small class="dim" id="pGas">gas price</small></div>
+    </div>
+  </div>
 
   <!-- drift tape: the newest tokens, live -->
   <div class="tape" aria-label="Newest tokens in the Drift"><div class="tape-track" id="tape"></div></div>
 
-  <!-- ================= the drift ================= -->
-  <section class="sec" id="drift">
+  <!-- ================= the drift: tokens stand on the planet ================= -->
+  <section class="sec" id="drift" data-story="drift">
     <div class="wrap drift-grid">
       <div class="drift-copy reveal">
-        <p class="label">The Drift</p>
+        <p class="label kicker">The Drift</p>
         <h2 class="display h2">A token is born every minute<br><span class="dim">Almost nobody knows where it's going</span></h2>
-        <p class="lead">That's the Drift. Polaris watches every mint on Robinhood Chain, pins each newborn token to the radar and gives it a North Score. The closer to the centre, the stronger the pull</p>
+        <p class="lead">That's the Drift. Polaris watches every mint on Robinhood Chain and plants each newborn token on the planet as a signal spike. The taller the spike, the harder it pulls</p>
         <dl class="kv">
           <div><dt class="label">Born in the last hour</dt><dd class="num sk" id="dHour">12</dd></div>
           <div><dt class="label">Tracked in the window</dt><dd class="num sk" id="dTracked">120</dd></div>
           <div><dt class="label">Strongest pull</dt><dd class="num sk" id="dTop">$POLARIS</dd></div>
         </dl>
-        <article class="token-card card" id="tokenCard" aria-live="polite">
+        <article class="token-card card spot" id="tokenCard" aria-live="polite">
           <header><span class="token-ava" id="tAva">P</span><div><b id="tName" class="sk">Scanning the sky</b><span class="num muted" id="tSym">$SIGNAL</span></div><span class="score num" id="tScore">50</span></header>
           <div class="factors" id="tFactors"></div>
-          <footer class="label"><span id="tMeta">Pick a blip on the radar</span><a id="tLink" target="_blank" rel="noopener" class="tlink">Explorer<svg class="i" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/></svg></a></footer>
+          <footer class="label"><span id="tMeta">Pick a spike on the planet</span><a id="tLink" target="_blank" rel="noopener" class="tlink">Explorer<svg class="i" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/></svg></a></footer>
         </article>
       </div>
-      <div class="radar-box reveal">
-        <canvas id="radar" aria-label="Drift radar"></canvas>
-        <div class="radar-tip" id="radarTip" hidden></div>
-        <p class="radar-legend label"><span><i class="lg lg-a"></i>North Pick</span><span><i class="lg"></i>Newborn token</span><span>Size · holders</span><span>Closer to centre · stronger pull</span></p>
+      <div class="globe-slot" data-globe-slot>
+        <p class="slot-legend label"><span><i class="lg lg-a"></i>North Pick</span><span><i class="lg"></i>Spike height · North Score</span><span>Arcs · pull toward the pick</span></p>
       </div>
     </div>
   </section>
 
+  <!-- ================= console ================= -->
+  <section class="sec" id="console" data-story="console">
+    <div class="wrap console-grid">
+      <div class="console-main">
+        <div class="sec-head reveal"><p class="label kicker">Console</p><h2 class="display h2">Ask the chain<br><span class="dim">in its own language</span></h2></div>
+        <div class="term panel reveal" id="term">
+          <div class="term-bar"><span>tty1 · guest@polaris</span><span class="term-state" aria-hidden="true"></span></div>
+          <div class="term-out" aria-live="polite"></div>
+          <form class="term-in" autocomplete="off"><label class="ps1" for="termIn">guest@polaris:~$</label><input id="termIn" autocapitalize="off" spellcheck="false" placeholder="type help, or pick a command"></form>
+          <div class="term-chips">
+            <button class="chip" data-cmd="help">help</button>
+            <button class="chip" data-cmd="drift">drift</button>
+            <button class="chip" data-cmd="vaults">vaults</button>
+            <button class="chip" data-cmd="score 800 120 90m">score 800 120 90m</button>
+            <button class="chip" data-cmd="pulse">pulse</button>
+            <button class="chip" data-cmd="beacon">beacon</button>
+            <button class="chip" data-cmd="ping">ping</button>
+            <button class="chip" data-cmd="clear">clear</button>
+          </div>
+        </div>
+      </div>
+      <div class="globe-slot" data-globe-slot></div>
+    </div>
+  </section>
+
   <!-- ================= instruments ================= -->
-  <section class="sec" id="instruments">
+  <section class="sec" id="instruments" data-story="instruments">
     <div class="wrap">
       <div class="sec-head reveal">
-        <p class="label">Instruments</p>
+        <p class="label kicker">Instruments</p>
         <h2 class="display h2">Four instruments,<br>one fixed point</h2>
       </div>
       <div class="inst-grid">
-        <div class="tuner panel reveal" id="tuner">
+        <div class="tuner panel spot reveal" id="tuner">
           <div class="tuner-head">
             <div><p class="label">North Score tuner</p><h3 class="h3">Feel how a token earns its pull</h3></div>
             <div class="dial" aria-live="polite"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" class="dial-bg"/><circle cx="60" cy="60" r="52" class="dial-fg" id="dialArc"/></svg><b class="display num" id="dialVal">42</b></div>
@@ -125,24 +172,24 @@
           </div>
         </div>
         <ol class="inst-list">
-          <li class="reveal"><span class="ix num">1</span><div><h3 class="h3">Drift Radar</h3><p class="dim">Every ERC-20 mint on Robinhood Chain lands on the radar within seconds, with its birth block, creator and holder count</p><span class="label">polaris api · eth_getLogs</span></div></li>
-          <li class="reveal"><span class="ix num">2</span><div><h3 class="h3">North Score</h3><p class="dim">One number from 1 to 99 for how hard a token is pulling: holder spread, mint activity, freshness and source verification</p><span class="label">score.mjs · open formula</span></div></li>
-          <li class="reveal"><span class="ix num">3</span><div><h3 class="h3">North Vaults</h3><p class="dim">ERC-4626 vaults that stream yield into the share price every second. The ranking weighs APY against depth and exit liquidity</p><span class="label">PolarisVault · PolarisRegistry</span></div></li>
-          <li class="reveal"><span class="ix num">4</span><div><h3 class="h3">Beacon</h3><p class="dim">A daily on-chain check-in. Streaks stack XP, $POLARIS holders earn half again, and the board is read straight from chain logs</p><span class="label">PolarisBeacon · Pinged events</span></div></li>
+          <li class="reveal"><a href="/app#radar"><span class="ix num">01</span><div><h3 class="h3">Drift Radar</h3><p class="dim">Every ERC-20 mint on Robinhood Chain lands on the radar within seconds, with its birth block, creator and holder count</p><span class="label">polaris api · eth_getLogs</span></div></a></li>
+          <li class="reveal"><a href="#console"><span class="ix num">02</span><div><h3 class="h3">North Score</h3><p class="dim">One number from 1 to 99 for how hard a token is pulling: holder spread, mint activity, freshness and source verification</p><span class="label">score.mjs · open formula</span></div></a></li>
+          <li class="reveal"><a href="/app#vaults"><span class="ix num">03</span><div><h3 class="h3">North Vaults</h3><p class="dim">ERC-4626 vaults that stream yield into the share price every second. The ranking weighs APY against depth and exit liquidity</p><span class="label">PolarisVault · PolarisRegistry</span></div></a></li>
+          <li class="reveal"><a href="/app#beacon"><span class="ix num">04</span><div><h3 class="h3">Beacon</h3><p class="dim">A daily on-chain check-in. Streaks stack XP, $POLARIS holders earn half again, and the board is read straight from chain logs</p><span class="label">PolarisBeacon · Pinged events</span></div></a></li>
         </ol>
       </div>
     </div>
   </section>
 
   <!-- ================= vaults ================= -->
-  <section class="sec" id="vaults">
+  <section class="sec" id="vaults" data-story="vaults">
     <div class="wrap">
       <div class="sec-head split reveal">
-        <div><p class="label">North Vaults</p><h2 class="display h2">Stables in orbit</h2></div>
+        <div><p class="label kicker">North Vaults</p><h2 class="display h2">Stables in orbit</h2></div>
         <p class="lead">Yield streams into the share price second by second, so there is no reward drop to front-run. The North Pick is the vault where yield, depth and exit liquidity line up best</p>
       </div>
       <div class="vault-grid">
-        <div class="panel rank reveal">
+        <div class="panel spot rank reveal">
           <div class="rank-head label"><span>#</span><span>Vault</span><span>APY</span><span>Depth</span><span>Exit</span><span>Score</span></div>
           <div id="rankRows" class="rank-rows">
             <div class="rank-row sk-row"></div><div class="rank-row sk-row"></div><div class="rank-row sk-row"></div>
@@ -150,7 +197,7 @@
           <p class="rank-foot label">score = APY × depth × exit · re-read from chain every 30s</p>
           <div class="rank-facts" id="rankFacts"></div>
         </div>
-        <div class="panel proj reveal">
+        <div class="panel spot proj reveal">
           <div class="proj-head">
             <div><p class="label" id="projLabel">Projection</p><h3 class="h3"><span class="num" id="projValue">$10,000</span> <span class="dim" id="projGain">grows</span></h3></div>
             <div class="seg" role="tablist" id="projDays"><button data-d="30">30d</button><button data-d="90">90d</button><button data-d="365" class="on">1y</button></div>
@@ -164,24 +211,24 @@
   </section>
 
   <!-- ================= beacon ================= -->
-  <section class="sec" id="beacon">
+  <section class="sec" id="beacon" data-story="beacon">
     <div class="wrap beacon-grid">
       <div class="reveal">
-        <p class="label">Beacon</p>
+        <p class="label kicker">Beacon</p>
         <h2 class="display h2">Look up once a day</h2>
         <p class="lead">Ping the Beacon on-chain once per UTC day. Each day in a row adds 5 XP to the next ping, up to +100, and holding 10,000 $POLARIS adds half again</p>
         <div class="xp-table">
-          <div><span class="label">Day 1</span><b class="num">10 XP</b></div>
-          <div><span class="label">Day 7</span><b class="num">40 XP</b></div>
-          <div><span class="label">Day 21+</span><b class="num">110 XP</b></div>
-          <div><span class="label">Holder boost</span><b class="num">×1.5</b></div>
+          <div class="spot"><span class="label">Day 1</span><b class="num">10 XP</b></div>
+          <div class="spot"><span class="label">Day 7</span><b class="num">40 XP</b></div>
+          <div class="spot"><span class="label">Day 21+</span><b class="num">110 XP</b></div>
+          <div class="spot"><span class="label">Holder boost</span><b class="num">×1.5</b></div>
         </div>
         <div class="hero-cta">
           <button class="btn btn-accent" id="pingBtn"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><path d="M12 8l1.2 2.8L16 12l-2.8 1.2L12 16l-1.2-2.8L8 12l2.8-1.2z"/></svg><span>Connect to ping</span></button>
           <a class="btn btn-ghost" href="/app#beacon">Full board</a>
         </div>
       </div>
-      <div class="panel constel reveal">
+      <div class="panel spot constel reveal">
         <svg class="constel-svg" id="constel" viewBox="0 0 560 220" aria-label="Your streak as a constellation"></svg>
         <p class="label constel-cap" id="constelCap">Seven days, seven stars. Connect a wallet to light yours</p>
         <div class="board">
@@ -193,10 +240,10 @@
   </section>
 
   <!-- ================= contracts ================= -->
-  <section class="sec" id="contracts">
+  <section class="sec" id="contracts" data-story="contracts">
     <div class="wrap">
       <div class="sec-head split reveal">
-        <div><p class="label">On-chain</p><h2 class="display h2">Every instrument,<br>verified</h2></div>
+        <div><p class="label kicker">On-chain</p><h2 class="display h2">Every instrument,<br>verified</h2></div>
         <p class="lead">Each contract sits behind a PolarisProxy (ERC-1967, UUPS). Addresses stay fixed across upgrades, and every source is verified and readable on the explorer</p>
       </div>
       <div class="panel ctable reveal">
@@ -206,18 +253,22 @@
     </div>
   </section>
 
-  <!-- ================= token ================= -->
-  <section class="sec token-sec">
-    <div class="wrap token-grid reveal">
-      <h2 class="display ticker">$POLARIS</h2>
-      <div>
-        <p class="lead">Fixed supply of 1,000,000,000. Hold 10,000 to boost every Beacon ping by half</p>
-        <div class="ca card"><span class="label">Contract</span><span class="num" id="caAddr">0x</span><button class="icon-btn" id="caCopy" aria-label="Copy contract address" data-icon="copy"></button><a class="icon-btn" id="caLink" target="_blank" rel="noopener" aria-label="Open in explorer" data-icon="ext"></a></div>
+  <!-- ================= token: the planet comes home ================= -->
+  <section class="sec token-sec" id="token" data-story="final">
+    <div class="wrap token-stack">
+      <p class="label kicker reveal">The fixed point</p>
+      <h2 class="display ticker reveal">$POLARIS</h2>
+      <div class="globe-slot final-slot" data-globe-slot></div>
+      <p class="lead reveal">Fixed supply of 1,000,000,000. Hold 10,000 to boost every Beacon ping by half</p>
+      <div class="ca card spot reveal"><span class="label">Contract</span><span class="num" id="caAddr">0x</span><button class="icon-btn" id="caCopy" aria-label="Copy contract address" data-icon="copy"></button><a class="icon-btn" id="caLink" target="_blank" rel="noopener" aria-label="Open in explorer" data-icon="ext"></a></div>
+      <div class="hero-cta reveal">
+        <a class="btn btn-primary" href="/app">Open terminal<svg class="i arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        <a class="btn btn-ghost" href="/docs">Read the field manual</a>
       </div>
     </div>
   </section>
 
-  <!-- ================= logbook (cream band) ================= -->
+  <!-- ================= logbook (inverse band) ================= -->
   <section class="band" id="logbook">
     <div class="wrap">
       <h2 class="display band-h">Logbook</h2>
@@ -234,8 +285,13 @@
 <footer class="foot">
   <div class="wrap">
     <div>
-      <a class="brand" href="/"><span data-mark></span>Polaris Terminal</a>
-      <p class="dim" style="max-width:32ch;margin:16px 0 0;font-size:14px">Everything moves. Look up. The signal terminal for Robinhood Chain</p>
+      <pre class="ascii" aria-hidden="true">██████╗  ██████╗ ██╗      █████╗ ██████╗ ██╗███████╗
+██╔══██╗██╔═══██╗██║     ██╔══██╗██╔══██╗██║██╔════╝
+██████╔╝██║   ██║██║     ███████║██████╔╝██║███████╗
+██╔═══╝ ██║   ██║██║     ██╔══██║██╔══██╗██║╚════██║
+██║     ╚██████╔╝███████╗██║  ██║██║  ██║██║███████║
+╚═╝      ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚══════╝</pre>
+      <p class="dim" style="max-width:34ch;margin:0;font-size:13px">Everything moves. Look up. The signal terminal for Robinhood Chain</p>
     </div>
     <div><h4>Terminal</h4><ul><li><a href="/app#radar">Drift Radar</a></li><li><a href="/app#vaults">North Vaults</a></li><li><a href="/app#beacon">Beacon</a></li></ul></div>
     <div><h4>Build</h4><ul><li><a href="/docs">Docs</a></li><li><a href="#contracts">Contracts</a></li><li><a href="https://github.com/Polaris-Terminal/polaris-terminal" target="_blank" rel="noopener">GitHub</a></li></ul></div>
@@ -247,7 +303,7 @@
 <div class="modal" id="wModal" role="dialog" aria-modal="true" aria-labelledby="wTitle">
   <div class="sheet panel">
     <h3 id="wTitle">Connect a wallet</h3>
-    <p class="dim" style="margin:0;font-size:14px">Polaris never holds funds. Every action is signed in your wallet</p>
+    <p class="dim" style="margin:0;font-size:13px">Polaris never holds funds. Every action is signed in your wallet</p>
     <div class="wallets" id="wList"></div>
     <button class="btn btn-ghost btn-sm" data-close style="margin-top:16px;width:100%">Close</button>
   </div>

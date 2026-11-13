@@ -38,14 +38,15 @@ export function mountRadar(canvas, { onSelect, tip } = {}) {
 
   function draw() {
     const { R, cx, cy } = layout();
+    if (R < 20) return; // canvas hidden behind another tab
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     // rings and bearings
     ctx.strokeStyle = palette.line; ctx.lineWidth = 1;
     for (let k = 1; k <= 4; k++) { ctx.beginPath(); ctx.arc(cx, cy, (R * k) / 4, 0, Math.PI * 2); ctx.stroke(); }
-    for (let d = 0; d < 360; d += 30) {
-      const a = (d - 90) * Math.PI / 180;
-      ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * R * 0.1, cy + Math.sin(a) * R * 0.1); ctx.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); ctx.stroke();
+    for (let d = 0; d < 360; d += 5) {
+      const a = (d - 90) * Math.PI / 180, inner = d % 30 ? R * (d % 10 ? 0.98 : 0.95) : R * 0.1;
+      ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner); ctx.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); ctx.stroke();
     }
     ctx.fillStyle = palette.text; ctx.font = "11px 'Geist Mono', monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ["N", "E", "S", "W"].forEach((l, i) => { const a = (i * 90 - 90) * Math.PI / 180; ctx.fillText(l, cx + Math.cos(a) * (R + 10), cy + Math.sin(a) * (R + 10)); });
@@ -55,9 +56,15 @@ export function mountRadar(canvas, { onSelect, tip } = {}) {
     if (!reduce) {
       const g = ctx.createConicGradient(sweep - Math.PI / 2, cx, cy);
       g.addColorStop(0, palette.accent + "00");
-      g.addColorStop(0.92, palette.accent + "00");
-      g.addColorStop(1, palette.accent + "33");
+      g.addColorStop(0.75, palette.accent + "00");
+      g.addColorStop(1, palette.accent + "4d");
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
+      // leading edge of the beam
+      const a = sweep - Math.PI / 2;
+      ctx.save();
+      ctx.strokeStyle = palette.accent; ctx.lineWidth = 1.5; ctx.shadowColor = palette.accent; ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); ctx.stroke();
+      ctx.restore();
     }
 
     // blips
@@ -67,8 +74,10 @@ export function mountRadar(canvas, { onSelect, tip } = {}) {
       const since = ((sweep - a) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
       const lit = reduce ? 0.85 : 0.45 + 0.55 * Math.max(0, 1 - since / 2.2);
       ctx.globalAlpha = on ? 1 : lit;
-      ctx.fillStyle = b.top || on ? palette.accent : palette.dot;
+      ctx.fillStyle = b.top || on || lit > 0.8 ? palette.accent : palette.dot;
+      ctx.shadowColor = palette.accent; ctx.shadowBlur = on || b.top ? 14 : 10 * lit; // phosphor afterglow
       ctx.beginPath(); ctx.arc(b.x, b.y, on ? b.s + 2 : b.s, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
       if (on || b.top) {
         ctx.globalAlpha = 1; ctx.strokeStyle = palette.accent; ctx.beginPath(); ctx.arc(b.x, b.y, b.s + 6, 0, Math.PI * 2); ctx.stroke();
         ctx.fillStyle = palette.ink; ctx.font = "12px 'Geist Mono', monospace";

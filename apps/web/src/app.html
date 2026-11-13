@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Terminal · Polaris</title>
 <meta name="description" content="Polaris Terminal: Drift Radar, North Vaults and the Beacon on Robinhood Chain.">
-<meta name="theme-color" content="#090e0c">
+<meta name="theme-color" content="#010603">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Doto:wght@600..900&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Doto:wght@600..900&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/base.css">
 <link rel="stylesheet" href="/css/landing.css">
 <link rel="stylesheet" href="/css/app.css">
@@ -23,27 +23,24 @@
   <a class="brand" href="/"><span data-mark></span>Polaris<small data-net-tag>Testnet</small></a>
   <nav class="side-nav" aria-label="Instruments">
     <p class="label">Instruments</p>
-    <a href="#radar" data-tab="radar" data-icon="radar"><span>Drift Radar</span><small class="num" id="nRadar"></small></a>
-    <a href="#vaults" data-tab="vaults" data-icon="vault"><span>North Vaults</span><small class="num" id="nVaults"></small></a>
-    <a href="#beacon" data-tab="beacon" data-icon="beacon"><span>Beacon</span><small class="num" id="nBeacon"></small></a>
+    <a href="#radar" data-tab="radar"><kbd>1</kbd><span>drift_radar</span><small class="num" id="nRadar"></small></a>
+    <a href="#vaults" data-tab="vaults"><kbd>2</kbd><span>north_vaults</span><small class="num" id="nVaults"></small></a>
+    <a href="#beacon" data-tab="beacon"><kbd>3</kbd><span>beacon</span><small class="num" id="nBeacon"></small></a>
     <p class="label">Reference</p>
-    <a href="/docs" data-icon="doc"><span>Docs</span></a>
-    <a data-explorer target="_blank" rel="noopener" data-icon="ext"><span>Explorer</span></a>
-    <a data-faucet target="_blank" rel="noopener" data-icon="drop"><span>ETH faucet</span></a>
+    <a href="/docs" data-icon="doc"><span>docs</span></a>
+    <a data-explorer target="_blank" rel="noopener" data-icon="ext"><span>explorer</span></a>
+    <a data-faucet target="_blank" rel="noopener" data-icon="drop"><span>eth_faucet</span></a>
   </nav>
   <div class="side-foot">
-    <div class="netcard">
-      <span class="label">Network</span>
-      <b><span class="dot live" id="netDot"></span><span id="netName">Robinhood Chain</span></b>
-      <span class="num muted" id="netBlock">syncing</span>
-    </div>
+    <p class="label">tail -f polaris.log</p>
+    <div class="tail" id="log" role="log" aria-label="Activity log"></div>
   </div>
 </aside>
 
 <div class="main">
   <header class="top">
     <button class="icon-btn side-toggle" id="sideToggle" aria-label="Menu" data-icon="menu"></button>
-    <h1 class="top-title" id="pageTitle">Drift Radar</h1>
+    <h1 class="top-title"><span class="ps1" id="whoami">guest@polaris</span><span class="path">:~/<span id="pageTitle">radar</span>$</span><span class="caret"></span></h1>
     <div class="nav-right">
       <button class="icon-btn" id="theme" aria-label="Switch theme"></button>
       <button class="btn btn-primary btn-sm" id="walletBtn"></button>
@@ -151,7 +148,18 @@
       <div class="board"><div class="board-head label"><span>Observer</span><span>Streak</span><span>XP</span></div><div id="board"></div></div>
     </div>
   </section>
+
+  <footer class="status" aria-label="Status">
+    <span class="st-mode">polaris</span>
+    <nav class="st-tabs" aria-label="Views"><a href="#radar" data-tab="radar">1:radar</a><a href="#vaults" data-tab="vaults">2:vaults</a><a href="#beacon" data-tab="beacon">3:beacon</a></nav>
+    <span class="st-keys">j/k select · 1-3 switch</span>
+    <span class="st-net"><span class="dot live" id="netDot"></span><span id="netName">Robinhood Chain</span></span>
+    <span class="num" id="netBlock">syncing</span>
+    <span class="num st-lat" id="stLat">rpc --</span>
+    <span class="num" id="clock"></span>
+  </footer>
 </div>
+<div class="hud" id="hud" aria-hidden="true"><div class="hud-ring"><span class="hud-xy"></span></div><div class="hud-lock"></div></div>
 
 <div class="modal" id="wModal" role="dialog" aria-modal="true" aria-labelledby="wTitle">
   <div class="sheet panel">

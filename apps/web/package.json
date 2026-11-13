@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "dev": "node build.mjs && cd ../api && STATIC_DIR=../web/dist node server.mjs"
+    "dev": "node build.mjs && cd ../api && STATIC_DIR=../web/dist node server.mjs",
+    "test": "node --test"
   }
 }
