@@ -191,6 +191,8 @@ button { cursor: pointer; background: none; border: 0; padding: 0; }
 .nav.solid { background: color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter: blur(12px); border-color: var(--line); }
 .nav .wrap { height: 100%; display: flex; align-items: center; gap: 28px; }
 .brand { display: flex; align-items: center; gap: 10px; font: 600 14px/1 var(--f-mono); letter-spacing: 0.06em; text-transform: uppercase; }
+.brand .logo { flex: none; border-radius: 6px; box-shadow: 0 0 0 1px var(--line-2), 0 0 12px rgb(0 255 65 / 0.3); }
+:root[data-theme="light"] .brand .logo { box-shadow: 0 0 0 1px var(--line-2); }
 .brand small { font: 400 10px/1 var(--f-mono); color: var(--accent-text); padding: 4px 6px; border: 1px solid var(--line-2); border-radius: var(--r-tag); letter-spacing: 0.1em; }
 .nav-links { display: flex; gap: 2px; margin-right: auto; }
 .nav-links a {
