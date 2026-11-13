@@ -6,7 +6,7 @@ dist/
 packages/contracts/artifacts/
 packages/contracts/cache/
 packages/contracts/types/
-packages/contracts/.openzeppelin/unknown-*.json
+packages/contracts/.openzeppelin/unknown-31337.json
 apps/api/data/
 .DS_Store
 polaris-logo.jpg

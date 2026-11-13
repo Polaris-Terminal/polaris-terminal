@@ -23,7 +23,8 @@ const dep = require(process.argv[1]); const ex = process.argv[2];
   for (const [k, c] of Object.entries(dep.contracts))
     for (const a of [c.proxy, c.implementation]) {
       const r = await fetch(`${ex}/api/v2/addresses/${a}`).then((r) => r.json());
-      if (!r.is_verified) bad.push(`${k} ${a}`);
+      const s = await fetch(`${ex}/api/v2/smart-contracts/${a}`).then((r) => r.json()).catch(() => ({}));
+      if (!r.is_verified || s.is_partially_verified === true) bad.push(`${k} ${a}`);
     }
   if (bad.length) { console.error("not verified:\n  " + bad.join("\n  ")); process.exit(1); }
   console.log("  all verified");
