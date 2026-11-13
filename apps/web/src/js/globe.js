@@ -180,9 +180,11 @@ const STAR_V = `uniform float uStar; void main() { gl_Position = projectionMatri
 const STAR_F = `
 uniform float uTime, uDim;
 void main() {
-  vec2 p = gl_PointCoord * 2.0 - 1.0; float x = abs(p.x), y = abs(p.y);
-  float rays = exp(-x * 16.0) * exp(-y * 2.6) + exp(-y * 16.0) * exp(-x * 2.6); // four points, like the mark
-  float a = (rays + exp(-dot(p, p) * 20.0)) * (0.82 + 0.18 * sin(uTime * 2.2));
+  vec2 p = gl_PointCoord * 2.0 - 1.0; float x = abs(p.x), y = abs(p.y), r2 = dot(p, p);
+  // a bright star through a lens: a small round core, a soft halo and four hair-thin diffraction spikes (the mark's
+  // four points) that fade out well before the sprite's square edge, so nothing adds up to a box
+  float spikes = (exp(-x * 90.0) * exp(-y * 3.5) + exp(-y * 90.0) * exp(-x * 3.5)) * (1.0 - smoothstep(0.3, 1.0, sqrt(r2)));
+  float a = (exp(-r2 * 90.0) + exp(-r2 * 14.0) * 0.28 + spikes * 0.85) * (0.85 + 0.15 * sin(uTime * 2.2));
   gl_FragColor = vec4(vec3(0.8, 1.0, 0.86), clamp(a, 0.0, 1.0) * uDim);
   #include <colorspace_fragment>
 }`;
@@ -204,18 +206,22 @@ void main() {
   gl_FragColor = vec4(c, 1.0);
   #include <colorspace_fragment>
 }`;
-const DUST_V = `attribute float aSize, aPhase; attribute vec3 aColor; uniform float uDpr, uTime; uniform vec2 uMouse; varying vec3 vColor;
+const DUST_V = `attribute float aSize, aPhase; attribute vec3 aColor; uniform float uDpr, uTime; uniform vec2 uMouse; varying vec3 vColor; varying float vSize;
 void main() {
+  vSize = aSize;
   vColor = aColor * (0.62 + 0.38 * sin(uTime * (0.5 + aPhase * 2.0) + aPhase * 6.3)); // twinkle
   vec2 p = vec2(mod(position.x + 1.0 - uTime * (0.001 + aSize * 0.0035), 2.0) - 1.0, position.y); // drift past, nearer stars faster
   gl_Position = vec4(p - uMouse * (0.004 + aSize * 0.012), 0.99, 1.0); // brighter, nearer dust leans further
-  gl_PointSize = max(1.0, aSize * uDpr);
+  gl_PointSize = aSize * uDpr * 5.0; // room for the soft falloff, so even faint stars are round
 }`;
-const DUST_F = `varying vec3 vColor;
+const DUST_F = `varying vec3 vColor; varying float vSize;
+// a star through a lens: gaussian core and halo, and tapering diffraction spikes on the brightest
 void main() {
-  float d = length(gl_PointCoord - 0.5);
-  if (d > 0.5) discard;
-  gl_FragColor = vec4(vColor * (1.0 - smoothstep(0.05, 0.5, d)), 1.0);
+  vec2 p = gl_PointCoord * 2.0 - 1.0; float r2 = dot(p, p), x = abs(p.x), y = abs(p.y);
+  if (r2 > 1.0) discard;
+  float psf = exp(-r2 * 30.0) + exp(-r2 * 7.0) * 0.12;
+  if (vSize > 2.0) psf += (exp(-x * 70.0) * exp(-y * 3.0) + exp(-y * 70.0) * exp(-x * 3.0)) * 0.45;
+  gl_FragColor = vec4(vColor * psf * (1.0 - smoothstep(0.5, 1.0, sqrt(r2))), 1.0);
   #include <colorspace_fragment>
 }`;
 
@@ -318,7 +324,7 @@ export function mountGlobe({ layer, canvas, target, hint, tip, describe = (t) =>
   }));
   let seed = 46630;
   const rnd = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
-  const TINTS = ["#ffffff", "#d6e4ff", "#fff0d6", "#c4ffd6", "#7dffa0"]; // white, blue-white, warm and the terminal's greens
+  const TINTS = ["#f8f7ff", "#f8f7ff", "#fff4ea", "#cad7ff", "#9bb0ff", "#ffd2a1"]; // stellar colours, mostly white
   const n = small ? 900 : 1800, dp = [], ds = [], dc = [], dph = [];
   for (let i = 0; i < n; i++) {
     const k = rnd();
@@ -333,7 +339,8 @@ export function mountGlobe({ layer, canvas, target, hint, tip, describe = (t) =>
   dustGeo.setAttribute("aSize", new THREE.Float32BufferAttribute(ds, 1));
   dustGeo.setAttribute("aColor", new THREE.Float32BufferAttribute(dc, 3));
   dustGeo.setAttribute("aPhase", new THREE.Float32BufferAttribute(dph, 1));
-  const dust = new THREE.Points(dustGeo, new THREE.ShaderMaterial({ vertexShader: DUST_V, fragmentShader: DUST_F, uniforms: { uDpr: { value: 1 }, uMouse: U.uMouse, uTime: U.uTime }, depthWrite: false, depthTest: false }));
+  const dust = new THREE.Points(dustGeo, new THREE.ShaderMaterial({ vertexShader: DUST_V, fragmentShader: DUST_F, uniforms: { uDpr: { value: 1 }, uMouse: U.uMouse, uTime: U.uTime }, depthWrite: false, depthTest: false,
+    transparent: true, blending: THREE.AdditiveBlending })); // light adds up: no dark rim around a star over the nebula
   [sky, dust].forEach((o, i) => { o.frustumCulled = false; o.renderOrder = i - 21; scene.add(o); });
 
   const composer = new EffectComposer(renderer);
@@ -593,7 +600,7 @@ export function mountGlobe({ layer, canvas, target, hint, tip, describe = (t) =>
     U.uDim.value = cur.dim;
     U.uOv.value = clamp(cur.ov, 0, 1);
     U.uPx.value = center.r * pr;
-    star.material.uniforms.uStar.value = Math.min(0.42 * center.r, 72) * pr;
+    star.material.uniforms.uStar.value = Math.min(0.55 * center.r, 94) * pr; // the rays fade out before the edge, so the sprite runs larger
     bezel.material.uniforms.uBezel.value = clamp((0.62 - cur.r) / 0.16, 0, 1); // a planet filling the screen drops its bezel
     spikeMat.opacity = U.uOv.value * cur.dim;
     bloom.strength = (small ? 0.6 : 0.75) * (0.4 + 0.6 * cur.dim);

@@ -4,6 +4,37 @@
 // the cursor (nearer ones further) and, every few seconds, a shooting star.
 const hash = (s) => () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296);
 
+// A star seen through a lens: a round soft core (never a square pixel), a faint halo, and on the brightest,
+// diffraction spikes that taper to nothing. Sprites are painted once and drawn scaled.
+const STAR_TINTS = ["#f8f7ff", "#f8f7ff", "#fff4ea", "#cad7ff", "#9bb0ff", "#ffd2a1"]; // stellar colours, mostly white
+const DOT = [[0, 1], [0.08, 0.92], [0.2, 0.5], [0.36, 0.14], [0.6, 0.03], [1, 0]];
+const HALO = [[0, 0.45], [0.12, 0.2], [0.35, 0.06], [0.7, 0.012], [1, 0]];
+function sprite(color, size, stops) {
+  const c = document.createElement("canvas"), g = c.getContext("2d"), m = size / 2, gr = g.createRadialGradient(m, m, 0, m, m, m);
+  c.width = c.height = size;
+  for (const [o, a] of stops) gr.addColorStop(o, `rgba(0,0,0,${a})`);
+  g.fillStyle = gr;
+  g.fillRect(0, 0, size, size);
+  g.globalCompositeOperation = "source-in"; // keep the falloff, take the colour
+  g.fillStyle = color;
+  g.fillRect(0, 0, size, size);
+  return c;
+}
+function spikes() {
+  const c = document.createElement("canvas"), g = c.getContext("2d");
+  c.width = c.height = 96;
+  for (const turn of [0, Math.PI / 2]) {
+    g.setTransform(1, 0, 0, 1, 48, 48);
+    g.rotate(turn);
+    const lg = g.createLinearGradient(-48, 0, 48, 0);
+    lg.addColorStop(0, "rgba(236,242,255,0)"); lg.addColorStop(0.35, "rgba(236,242,255,0.25)"); lg.addColorStop(0.5, "rgba(236,242,255,0.95)");
+    lg.addColorStop(0.65, "rgba(236,242,255,0.25)"); lg.addColorStop(1, "rgba(236,242,255,0)");
+    g.fillStyle = lg;
+    g.beginPath(); g.moveTo(-48, 0); g.lineTo(0, -1.3); g.lineTo(48, 0); g.lineTo(0, 1.3); g.closePath(); g.fill(); // thin, pointed at both ends
+  }
+  return c;
+}
+
 export function paintSky(w, h) {
   const c = document.createElement("canvas"), g = c.getContext("2d"), rnd = hash(911), d = Math.hypot(w, h);
   const peaked = () => (rnd() + rnd() + rnd() - 1.5) / 1.5; // -1..1, crowded at 0
@@ -50,24 +81,18 @@ export function mountSpace(canvas) {
   if (!canvas) return;
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const ctx = canvas.getContext("2d"), rnd = hash(4663), PAD = 40;
-  const TINTS = ["255,255,255", "214,228,255", "255,240,214", "196,255,214"]; // white, blue-white, warm, green
-  // in unit space, so a resize keeps the same sky; grouped by tint so the canvas switches colour rarely
+  const dots = STAR_TINTS.map((c) => sprite(c, 32, DOT)), halos = STAR_TINTS.map((c) => sprite(c, 64, HALO)), spike = spikes();
+  // in unit space, so a resize keeps the same sky
   const stars = Array.from({ length: Math.round(Math.min(1300, (innerWidth * innerHeight) / 1100)) }, () => {
     const z = rnd() ** 2.2; // most stars are far
-    return { x: rnd(), y: rnd(), z, r: 0.35 + z * 1.3, a: 0.3 + 0.7 * z, c: TINTS[(rnd() * 4) | 0], tw: rnd() * 6.3, ts: 0.5 + rnd() * 2 };
-  }).sort((a, b) => (a.c < b.c ? -1 : 1));
-  const flare = document.createElement("canvas"); // soft halo for the brightest stars
-  flare.width = flare.height = 64;
-  const fg = flare.getContext("2d"), fr = fg.createRadialGradient(32, 32, 0, 32, 32, 32);
-  fr.addColorStop(0, "rgba(255,255,255,0.95)"); fr.addColorStop(0.12, "rgba(210,255,225,0.4)"); fr.addColorStop(1, "rgba(0,255,65,0)");
-  fg.fillStyle = fr;
-  fg.fillRect(0, 0, 64, 64);
+    return { x: rnd(), y: rnd(), z, r: 0.35 + z * 1.3, a: 0.35 + 0.65 * z, c: (rnd() * STAR_TINTS.length) | 0, tw: rnd() * 6.3, ts: 0.5 + rnd() * 2 };
+  });
 
-  let w = 0, h = 0, dpr = 1, mx = 0, my = 0, tx = 0, ty = 0, light = false, dim = "", sky = null, last = 0, meteor = null, nextMeteor = 2500;
+  let w = 0, h = 0, dpr = 1, mx = 0, my = 0, tx = 0, ty = 0, light = false, dimDot = null, sky = null, last = 0, meteor = null, nextMeteor = 2500;
   const wrap = (v, n) => ((v % n) + n) % n;
   const theme = () => {
     light = document.documentElement.dataset.theme === "light";
-    dim = getComputedStyle(document.documentElement).getPropertyValue("--muted").trim();
+    dimDot = sprite(getComputedStyle(document.documentElement).getPropertyValue("--muted").trim(), 32, DOT);
     draw(performance.now());
   };
   const resize = () => {
@@ -84,21 +109,18 @@ export function mountSpace(canvas) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     if (!light) ctx.drawImage(sky, -PAD - mx * 12, -PAD - my * 12, w + PAD * 2, h + PAD * 2); // the far sky barely moves
-    let tint = "";
     for (const s of stars) {
       const x = wrap(s.x * w - sec * (1.5 + 9 * s.z) - mx * (6 + 34 * s.z), w), y = wrap(s.y * h - my * (6 + 34 * s.z), h);
       const a = s.a * (light ? 0.45 : 1) * (reduce ? 1 : 0.62 + 0.38 * Math.sin(sec * s.ts + s.tw));
-      if (!light && s.z > 0.9) { // near and bright: a halo, and spikes on the brightest
-        const f = s.r * 12;
-        ctx.globalAlpha = a * 0.8;
-        ctx.drawImage(flare, x - f / 2, y - f / 2, f, f);
-        if (s.z > 0.975) { ctx.fillStyle = "#fff"; ctx.fillRect(x - f * 0.7, y - 0.35, f * 1.4, 0.7); ctx.fillRect(x - 0.35, y - f * 0.7, 0.7, f * 1.4); tint = ""; }
+      if (!light && s.z > 0.88) { // near and bright: a halo, and spikes on the brightest
+        const f = s.r * 16;
+        ctx.globalAlpha = a * 0.75;
+        ctx.drawImage(halos[s.c], x - f / 2, y - f / 2, f, f);
+        if (s.z > 0.97) { const k = s.r * 20; ctx.globalAlpha = a * 0.7; ctx.drawImage(spike, x - k / 2, y - k / 2, k, k); }
       }
-      const c = light ? dim : `rgb(${s.c})`;
-      if (c !== tint) ctx.fillStyle = tint = c;
+      const d = s.r * 5;
       ctx.globalAlpha = a;
-      if (s.r < 1) ctx.fillRect(x, y, s.r * 1.6, s.r * 1.6);
-      else { ctx.beginPath(); ctx.arc(x, y, s.r, 0, 7); ctx.fill(); }
+      ctx.drawImage(light ? dimDot : dots[s.c], x - d / 2, y - d / 2, d, d);
     }
     ctx.globalAlpha = 1;
     if (!light && !reduce) shootingStar(t);
@@ -121,7 +143,7 @@ export function mountSpace(canvas) {
     ctx.lineCap = "round";
     ctx.beginPath(); ctx.moveTo(hx - meteor.dx * k, hy - meteor.dy * k); ctx.lineTo(hx, hy); ctx.stroke();
     ctx.globalAlpha = fade;
-    ctx.drawImage(flare, hx - 9, hy - 9, 18, 18);
+    ctx.drawImage(halos[0], hx - 10, hy - 10, 20, 20);
     ctx.globalAlpha = 1;
   }
 
