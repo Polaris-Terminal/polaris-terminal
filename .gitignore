@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+packages/contracts/artifacts/
+packages/contracts/cache/
+packages/contracts/types/
+packages/contracts/.openzeppelin/unknown-*.json
+apps/api/data/
+.DS_Store
+polaris-logo.jpg
+packages/contracts/deployments/localhost.json

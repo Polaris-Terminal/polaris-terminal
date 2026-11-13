@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Docs · Polaris Terminal</title>
+<meta name="description" content="How Polaris Terminal reads the Drift, scores tokens, ranks North Vaults and runs the Beacon.">
+<meta name="theme-color" content="#090e0c">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Doto:wght@600..900&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/base.css">
+<link rel="stylesheet" href="/css/docs.css">
+<script>try{var t=localStorage.getItem("polaris-theme");t&&(document.documentElement.dataset.theme=JSON.parse(t))}catch(e){}</script>
+<script type="module" src="/js/docs.js"></script>
+</head>
+<body>
+<header class="nav solid">
+  <div class="wrap">
+    <a class="brand" href="/"><span data-mark></span>Polaris Terminal<small class="hide-sm" data-net-tag>Testnet</small></a>
+    <nav class="nav-links" aria-label="Docs">
+      <a href="#drift">Drift</a><a href="#score">North Score</a><a href="#vaults">Vaults</a><a href="#beacon">Beacon</a><a href="#contracts">Contracts</a><a href="#network">Network</a>
+    </nav>
+    <div class="nav-right">
+      <button class="icon-btn" id="theme" aria-label="Switch theme"></button>
+      <a class="btn btn-primary btn-sm hide-sm" href="/app">Open terminal</a>
+      <button class="icon-btn menu-btn" aria-label="Menu" data-icon="menu"></button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap docs">
+  <aside class="toc label">
+    <a href="#drift">The Drift</a><a href="#score">North Score</a><a href="#vaults">North Vaults</a><a href="#beacon">Beacon</a><a href="#contracts">Contracts</a><a href="#network">Network</a>
+  </aside>
+  <article>
+    <h1 class="display">Field manual</h1>
+    <p class="lead">How Polaris reads Robinhood Chain, what every number means and where each one comes from</p>
+
+    <h2 id="drift">The Drift</h2>
+    <p>The Polaris scanner reads every ERC-20 <code>Transfer</code> from the zero address on Robinhood Chain, which is how a token's first supply appears. Each new contract is dated from its creation transaction, so a token that mints again weeks later never shows up as newborn. Tokens stay on the radar for 48 hours after birth.</p>
+    <p>Holder counts and transfer counts refresh every few minutes from the chain explorer. The scanner keeps its place by block number, so nothing is skipped across restarts.</p>
+
+    <h2 id="score">North Score</h2>
+    <p>A number from 1 to 99 for how hard a newborn token is pulling the Drift. Every input is on-chain and the formula is open:</p>
+    <pre><code>holders  = log10(holders + 1) / log10(5000)        capped at 1
+mints    = log10(mints seen + 1) / 3                capped at 1
+fresh    = 0.2 + 0.8 × (1 − age / 48h)
+trust    = 1 if the source is verified, else 0.7
+
+score    = (0.45·holders + 0.30·mints + 0.25·fresh) × trust × 100</code></pre>
+    <p>On the radar, a token's distance from the centre is 100 minus its score, its bearing comes from its address and its size from its holders. The highest score is the North Pick.</p>
+
+    <h2 id="vaults">North Vaults</h2>
+    <p>Each North Vault is an ERC-4626 vault behind its own <code>PolarisProxy</code>. Yield is streamed in linearly: when rewards arrive they unlock second by second over the stream, so the share price climbs smoothly and there is no single moment to front-run.</p>
+    <p>The ranking uses the same three factors for every vault:</p>
+    <pre><code>depth = clamp(log10(TVL) / 9, 0.3, 1)
+exit  = clamp(log10(withdrawable) / 7, 0.3, 1)
+score = APY × depth × exit</code></pre>
+    <p>Before any deposit the terminal checks two things on-chain: the vault is active in <code>PolarisRegistry</code>, and the vault's <code>asset()</code> is the registry asset. The registry refuses to list any vault whose asset does not match. Deposits can be paused by the owner; withdrawals cannot.</p>
+    <p>On testnet the vaults hold pUSD, a testnet stable anyone can claim once a day from <code>PolarisDollar.drip()</code>.</p>
+
+    <h2 id="beacon">Beacon</h2>
+    <p>One ping per UTC day through <code>PolarisBeacon.ping()</code>. Pinging on consecutive days builds a streak, and a missed day restarts it at one.</p>
+    <pre><code>xp per ping = 10 + 5 × min(streak − 1, 20)
+holder boost = ×1.5 while the wallet holds 10,000 $POLARIS</code></pre>
+    <p>Every ping emits <code>Pinged(observer, day, streak, xp, gained)</code>. The leaderboard is rebuilt from these events, so anyone can recompute it.</p>
+
+    <h2 id="contracts">Contracts</h2>
+    <p>Every contract is a UUPS implementation behind a <code>PolarisProxy</code> (ERC-1967). Addresses never change across upgrades, and only the owner can authorise one. All sources are verified on the explorer.</p>
+    <div class="dtable" id="dContracts"></div>
+
+    <h2 id="network">Network</h2>
+    <div class="dtable" id="dNetwork"></div>
+  </article>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div><a class="brand" href="/"><span data-mark></span>Polaris Terminal</a></div>
+    <div><h4>Terminal</h4><ul><li><a href="/app#radar">Drift Radar</a></li><li><a href="/app#vaults">North Vaults</a></li><li><a href="/app#beacon">Beacon</a></li></ul></div>
+    <div><h4>Build</h4><ul><li><a href="/">Home</a></li><li><a href="https://github.com/Polaris-Terminal/polaris-terminal" target="_blank" rel="noopener">GitHub</a></li></ul></div>
+    <div><h4>Network</h4><ul><li><a data-explorer target="_blank" rel="noopener">Explorer</a></li></ul></div>
+    <div class="legal"><span>Polaris Terminal 2026</span><span data-net-tag>Testnet</span></div>
+  </div>
+</footer>
+</body>
+</html>

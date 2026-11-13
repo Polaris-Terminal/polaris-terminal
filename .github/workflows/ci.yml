@@ -1,0 +1,27 @@
+name: build
+
+on:
+  push:
+    branches: [main, testnet, mainnet]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Contracts · compile and test
+        run: pnpm --filter @polaris/contracts test
+      - name: API · test
+        run: pnpm --filter @polaris/api test
+      - name: Web · build
+        run: |
+          NETWORK=robinhoodTestnet
+          if [ "$GITHUB_REF_NAME" = mainnet ] && [ -f packages/contracts/deployments/robinhood.json ]; then NETWORK=robinhood; fi
+          NETWORK=$NETWORK pnpm --filter @polaris/web build

@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Terminal · Polaris</title>
+<meta name="description" content="Polaris Terminal: Drift Radar, North Vaults and the Beacon on Robinhood Chain.">
+<meta name="theme-color" content="#090e0c">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Doto:wght@600..900&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/base.css">
+<link rel="stylesheet" href="/css/landing.css">
+<link rel="stylesheet" href="/css/app.css">
+<script>try{var t=localStorage.getItem("polaris-theme");t&&(document.documentElement.dataset.theme=JSON.parse(t))}catch(e){}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" defer></script>
+<script type="module" src="/js/app.js"></script>
+</head>
+<body class="app">
+<aside class="side" id="side">
+  <a class="brand" href="/"><span data-mark></span>Polaris<small data-net-tag>Testnet</small></a>
+  <nav class="side-nav" aria-label="Instruments">
+    <p class="label">Instruments</p>
+    <a href="#radar" data-tab="radar" data-icon="radar"><span>Drift Radar</span><small class="num" id="nRadar"></small></a>
+    <a href="#vaults" data-tab="vaults" data-icon="vault"><span>North Vaults</span><small class="num" id="nVaults"></small></a>
+    <a href="#beacon" data-tab="beacon" data-icon="beacon"><span>Beacon</span><small class="num" id="nBeacon"></small></a>
+    <p class="label">Reference</p>
+    <a href="/docs" data-icon="doc"><span>Docs</span></a>
+    <a data-explorer target="_blank" rel="noopener" data-icon="ext"><span>Explorer</span></a>
+    <a data-faucet target="_blank" rel="noopener" data-icon="drop"><span>ETH faucet</span></a>
+  </nav>
+  <div class="side-foot">
+    <div class="netcard">
+      <span class="label">Network</span>
+      <b><span class="dot live" id="netDot"></span><span id="netName">Robinhood Chain</span></b>
+      <span class="num muted" id="netBlock">syncing</span>
+    </div>
+  </div>
+</aside>
+
+<div class="main">
+  <header class="top">
+    <button class="icon-btn side-toggle" id="sideToggle" aria-label="Menu" data-icon="menu"></button>
+    <h1 class="top-title" id="pageTitle">Drift Radar</h1>
+    <div class="nav-right">
+      <button class="icon-btn" id="theme" aria-label="Switch theme"></button>
+      <button class="btn btn-primary btn-sm" id="walletBtn"></button>
+    </div>
+  </header>
+
+  <!-- ================= radar ================= -->
+  <section class="view" id="v-radar">
+    <div class="stats">
+      <div class="stat card"><span class="label">Born in the last hour</span><b class="num sk" id="rHour">12</b><small class="dim" id="rHourD">newborn tokens</small></div>
+      <div class="stat card"><span class="label">Born in the last 24h</span><b class="num sk" id="rDay">120</b><small class="dim">first mint seen on-chain</small></div>
+      <div class="stat card"><span class="label">Strongest pull</span><b class="num sk" id="rTop">$SIGNAL</b><small class="dim" id="rTopD">North Score</small></div>
+      <div class="stat card"><span class="label">Scanner head</span><b class="num sk" id="rHead">152,700,000</b><small class="dim">mint logs read to this block</small></div>
+    </div>
+    <div class="radar-layout">
+      <div class="panel radar-panel">
+        <div class="panel-head"><div><p class="label">Live radar</p><h2 class="h3">Closer to Polaris, stronger pull</h2></div><span class="tag"><span class="dot live"></span>scanning</span></div>
+        <div class="radar-box app-radar"><canvas id="radarCanvas" aria-label="Drift radar"></canvas><div class="radar-tip" id="radarTip" hidden></div></div>
+      </div>
+      <div class="panel detail" id="detail">
+        <div class="panel-head"><div><p class="label">Signal</p><h2 class="h3" id="dName">Reading the sky</h2></div><span class="score num" id="dScore">50</span></div>
+        <div class="factors" id="dFactors"></div>
+        <dl class="facts" id="dFacts"></dl>
+        <a class="btn btn-ghost" id="dLink" target="_blank" rel="noopener">Open in explorer<svg class="i" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+      </div>
+    </div>
+    <div class="panel table-panel">
+      <div class="panel-head">
+        <div><p class="label">The Drift</p><h2 class="h3">Every newborn token, ranked</h2></div>
+        <div class="seg" id="sortSeg"><button data-s="score" class="on">Score</button><button data-s="age">Newest</button><button data-s="holders">Holders</button></div>
+      </div>
+      <div class="ttable">
+        <div class="trow thead label"><span>#</span><span>Token</span><span>Age</span><span>Holders</span><span>Mints</span><span>North Score</span></div>
+        <div id="tRows"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= vaults ================= -->
+  <section class="view" id="v-vaults" hidden>
+    <div class="stats">
+      <div class="stat card"><span class="label">Total in orbit</span><b class="num sk" id="vTvl">$700K</b><small class="dim" id="vTvlD">across North Vaults</small></div>
+      <div class="stat card"><span class="label">North Pick</span><b class="num sk" id="vPick">9.2%</b><small class="dim" id="vPickN">best ranked APY</small></div>
+      <div class="stat card"><span class="label">Your position</span><b class="num sk" id="vPos">$1</b><small class="dim" id="vPosD">Connect a wallet to see it</small></div>
+      <div class="stat card"><span class="label" id="vBalL">Wallet pUSD</span><b class="num sk" id="vBal">10K</b><small class="dim" id="vBalD">Claim a drip to start</small></div>
+    </div>
+    <div class="vault-layout">
+      <div class="panel rank">
+        <div class="rank-head label"><span>#</span><span>Vault</span><span>APY</span><span>Depth</span><span>Exit</span><span>Score</span></div>
+        <div id="rankRows" class="rank-rows"><div class="rank-row sk-row"></div><div class="rank-row sk-row"></div><div class="rank-row sk-row"></div></div>
+        <div class="rank-foot">
+          <p class="label">score = APY × depth × exit · checked against PolarisRegistry before any deposit</p>
+        </div>
+        <div class="vdetail" id="vDetail"></div>
+        <div class="chart" id="vChart"><svg preserveAspectRatio="none"></svg><div class="chart-tip" hidden></div></div>
+      </div>
+      <div class="panel form">
+        <div class="seg wide" id="modeSeg"><button data-m="dep" class="on">Deposit</button><button data-m="wd">Withdraw</button></div>
+        <label class="field">
+          <span class="label" id="fLabel">Amount</span>
+          <div class="field-in"><input id="amt" inputmode="decimal" placeholder="Amount" autocomplete="off"><span class="unit" id="fUnit">pUSD</span><button class="btn btn-ghost btn-sm" id="maxBtn">Max</button></div>
+          <span class="label" id="fAvail">Connect a wallet to see your balance</span>
+        </label>
+        <div class="preview" id="fPreview"></div>
+        <button class="btn btn-primary" id="goBtn">Connect wallet</button>
+        <div class="faucet" id="faucet">
+          <div><b>Need pUSD</b><span class="dim">Claim 10,000 testnet pUSD once a day</span></div>
+          <button class="btn btn-ghost btn-sm" id="dripBtn">Claim</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= beacon ================= -->
+  <section class="view" id="v-beacon" hidden>
+    <div class="beacon-layout">
+      <div class="panel ping-card">
+        <button class="ping-star" id="bigPing" aria-label="Ping the Beacon"><span data-mark></span></button>
+        <div class="ping-copy">
+          <p class="label" id="bDay">Today</p>
+          <h2 class="display ping-h" id="bHead">Look up</h2>
+          <p class="dim" id="bSub">One ping per UTC day keeps your streak lit</p>
+          <button class="btn btn-accent" id="pingBtn">Connect to ping</button>
+        </div>
+        <div class="ping-stats">
+          <div><span class="label">Streak</span><b class="num" id="bStreak">Day one</b></div>
+          <div><span class="label">Best</span><b class="num" id="bBest">Ahead</b></div>
+          <div><span class="label">XP</span><b class="num" id="bXp">First light</b></div>
+          <div><span class="label">Resets in</span><b class="num" id="bReset">24h</b></div>
+        </div>
+      </div>
+      <div class="panel constel">
+        <div class="panel-head"><div><p class="label">This week</p><h2 class="h3">Your constellation</h2></div></div>
+        <svg class="constel-svg" id="constel" viewBox="0 0 560 220" aria-label="Your streak as a constellation"></svg>
+        <div class="xp-table">
+          <div><span class="label">Day 1</span><b class="num">10 XP</b></div>
+          <div><span class="label">Day 7</span><b class="num">40 XP</b></div>
+          <div><span class="label">Day 21+</span><b class="num">110 XP</b></div>
+          <div><span class="label">10K $POLARIS</span><b class="num">×1.5</b></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel table-panel">
+      <div class="panel-head"><div><p class="label">Leaderboard</p><h2 class="h3">Observers by XP</h2></div><span class="label" id="bTotals"></span></div>
+      <div class="board"><div class="board-head label"><span>Observer</span><span>Streak</span><span>XP</span></div><div id="board"></div></div>
+    </div>
+  </section>
+</div>
+
+<div class="modal" id="wModal" role="dialog" aria-modal="true" aria-labelledby="wTitle">
+  <div class="sheet panel">
+    <h3 id="wTitle">Connect a wallet</h3>
+    <p class="dim" style="margin:0;font-size:14px">Polaris never holds funds. Every action is signed in your wallet</p>
+    <div class="wallets" id="wList"></div>
+    <button class="btn btn-ghost btn-sm" data-close style="margin-top:16px;width:100%">Close</button>
+  </div>
+</div>
+<div class="modal" id="txModal" role="dialog" aria-modal="true" aria-labelledby="txTitle">
+  <div class="sheet panel">
+    <h3 id="txTitle">Confirm in your wallet</h3>
+    <p class="dim" id="txSub" style="margin:0;font-size:14px"></p>
+    <ol class="steps" id="txSteps"></ol>
+    <button class="btn btn-ghost btn-sm" id="txDone" style="margin-top:16px;width:100%" hidden>Done</button>
+  </div>
+</div>
+</body>
+</html>

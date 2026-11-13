@@ -1,0 +1,11 @@
+{
+  "name": "@polaris/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "STATIC_DIR=../web/dist node --watch server.mjs",
+    "start": "node server.mjs",
+    "build": "node --check server.mjs",
+    "test": "node --test"
+  }
+}
