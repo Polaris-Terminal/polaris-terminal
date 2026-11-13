@@ -26,7 +26,7 @@
   --band: #00ff41;            /* inverse-video logbook band */
   --band-ink: #001405;
   --band-2: #0b4a1d;
-  --glass: rgb(3 16 10 / 0.8);
+  --glass: rgb(3 16 10 / 0.7); /* lets the starfield read through the panels */
   --shadow: 0 16px 40px rgb(0 0 0 / 0.55);
   --hi: inset 0 1px 0 rgb(0 255 65 / 0.07);
   --scan: 0.32;               /* CRT scanline strength */
@@ -234,8 +234,7 @@ button { cursor: pointer; background: none; border: 0; padding: 0; }
 .dot.live { animation: live 1.6s steps(2) infinite; }
 @keyframes live { 50% { opacity: 0.25; } }
 
-/* cursor spotlight on panels, driven by fx.js */
-.spot { background-image: radial-gradient(420px circle at var(--mx, -999px) var(--my, -999px), var(--accent-soft), transparent 65%); transition: border-color var(--t-menu) var(--ease); }
+.spot { transition: border-color var(--t-menu) var(--ease); }
 .spot:hover { border-color: var(--line-2); }
 
 /* skeleton: shown only until the first value lands */

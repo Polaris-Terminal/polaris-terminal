@@ -26,29 +26,6 @@ kbd { font: 400 10px/1 var(--f-mono); padding: 3px 5px; border-radius: 2px; bord
 .chip:hover, .chip[aria-pressed="true"] { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); box-shadow: var(--glow); }
 .chip:active { transform: scale(0.96); }
 
-/* ---------- targeting cursor ---------- */
-.hud { position: fixed; inset: 0; z-index: 95; pointer-events: none; opacity: 0; transition: opacity var(--t-menu); }
-.hud.on { opacity: 1; }
-.hud-ring { position: absolute; left: -17px; top: -17px; width: 34px; height: 34px; border: 1px solid var(--line-2); border-radius: 50%;
-  transition: width var(--t-menu) var(--ease), height var(--t-menu) var(--ease), left var(--t-menu) var(--ease), top var(--t-menu) var(--ease), border-color var(--t-menu); }
-.hud-ring::before, .hud-ring::after { content: ""; position: absolute; background: var(--accent); opacity: 0.7; }
-.hud-ring::before { left: 50%; top: -5px; bottom: -5px; width: 1px; transform: translateX(-50%); clip-path: polygon(0 0, 100% 0, 100% 9px, 0 9px, 0 calc(100% - 9px), 100% calc(100% - 9px), 100% 100%, 0 100%); }
-.hud-ring::after { top: 50%; left: -5px; right: -5px; height: 1px; transform: translateY(-50%); clip-path: polygon(0 0, 9px 0, 9px 100%, 0 100%, 0 0, calc(100% - 9px) 0, 100% 0, 100% 100%, calc(100% - 9px) 100%); }
-.hud-xy { position: absolute; left: calc(100% + 8px); top: calc(100% + 2px); font: 400 10px/1 var(--f-mono); color: var(--muted); letter-spacing: 0.06em; white-space: nowrap; }
-.hud.locked .hud-ring { width: 10px; height: 10px; left: -5px; top: -5px; border-color: var(--accent); }
-.hud.locked .hud-xy, .hud.grab .hud-xy { color: var(--accent-text); }
-.hud.grab .hud-ring { width: 54px; height: 54px; left: -27px; top: -27px; border-style: dashed; border-color: var(--accent); }
-.hud.grab .hud-xy::after { content: " · drag"; }
-.hud-lock { position: absolute; left: 0; top: 0; opacity: 0; transition: transform 160ms var(--ease), width 160ms var(--ease), height 160ms var(--ease), opacity 120ms;
-  --c: var(--accent);
-  background:
-    linear-gradient(var(--c), var(--c)) 0 0 / 10px 1px, linear-gradient(var(--c), var(--c)) 0 0 / 1px 10px,
-    linear-gradient(var(--c), var(--c)) 100% 0 / 10px 1px, linear-gradient(var(--c), var(--c)) 100% 0 / 1px 10px,
-    linear-gradient(var(--c), var(--c)) 0 100% / 10px 1px, linear-gradient(var(--c), var(--c)) 0 100% / 1px 10px,
-    linear-gradient(var(--c), var(--c)) 100% 100% / 10px 1px, linear-gradient(var(--c), var(--c)) 100% 100% / 1px 10px;
-  background-repeat: no-repeat; filter: drop-shadow(0 0 3px rgb(0 255 65 / 0.6)); }
-.hud.locked .hud-lock { opacity: 1; }
-
 /* ---------- splash: masked around the planet, which globe.js parks at the centre with r = 0.22 (0.34 on phones)
    of the short side; the iris opens by animating --open from 0 to 1 ---------- */
 html.splashing { overflow: hidden; }

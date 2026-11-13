@@ -9,6 +9,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { buildPath, samplePath } from "./path.js";
+import { paintSky } from "./space.js";
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -186,21 +187,28 @@ void main() {
   #include <colorspace_fragment>
 }`;
 const SKY_F = `
-uniform float uTime; uniform vec2 uMouse; varying vec2 vUv;
+uniform sampler2D uSky; uniform float uTime, uAspect; uniform vec2 uMouse; varying vec2 vUv;
+// a shooting star for about a second out of every seven, in aspect-correct screen units
+float meteor(vec2 p) {
+  float k = floor(uTime / 7.0), f = fract(uTime / 7.0) / 0.15;
+  vec2 r = fract(sin(vec2(k * 12.9898 + 1.3, k * 78.233 + 4.1)) * 43758.5453);
+  if (f > 1.0 || r.x < 0.2) return 0.0;
+  vec2 dir = normalize(vec2(-1.0, -0.35 - 0.5 * r.y)), d = p - vec2((0.35 + 0.65 * r.x) * uAspect, 0.62 + 0.33 * r.y) - dir * f * 0.75;
+  float along = -dot(d, dir), tail = 0.2 * min(1.0, f * 4.0);
+  if (along < 0.0 || along > tail) return 0.0;
+  return (1.0 - along / tail) * min(1.0, f * 6.0) * (1.0 - smoothstep(0.6, 1.0, f)) * (1.0 - smoothstep(0.0, 0.0018, abs(d.x * dir.y - d.y * dir.x)));
+}
 void main() {
-  float s = sin(uTime * 0.02) * 0.03;
-  vec2 uv = vUv - uMouse * 0.012; // the nebula sits far away, so it barely moves against the cursor
-  vec3 c = vec3(0.0003, 0.0018, 0.0009);
-  c += vec3(0.001, 0.02, 0.007) * exp(-length((uv - vec2(-0.1 + s, 0.45)) * vec2(1.4, 0.8)) * 3.4);
-  c += vec3(0.0008, 0.015, 0.006) * exp(-length((uv - vec2(1.12, 0.28 + s)) * vec2(1.3, 0.85)) * 3.6);
-  c += vec3(0.001, 0.012, 0.005) * exp(-length((uv - vec2(0.55, 0.02)) * vec2(1.0, 1.7)) * 5.5);
+  vec4 s = texture2D(uSky, (vUv - 0.5) * 0.96 + 0.5 - uMouse * 0.012); // paintSky; far away, so it barely moves against the cursor
+  vec3 c = vec3(0.0003, 0.0018, 0.0009) + pow(s.rgb * s.a, vec3(2.2)) + vec3(0.75, 1.0, 0.82) * meteor(vec2(vUv.x * uAspect, vUv.y));
   gl_FragColor = vec4(c, 1.0);
   #include <colorspace_fragment>
 }`;
-const DUST_V = `attribute float aSize; attribute vec3 aColor; uniform float uDpr; uniform vec2 uMouse; varying vec3 vColor;
+const DUST_V = `attribute float aSize, aPhase; attribute vec3 aColor; uniform float uDpr, uTime; uniform vec2 uMouse; varying vec3 vColor;
 void main() {
-  vColor = aColor;
-  gl_Position = vec4(position.xy - uMouse * (0.004 + aSize * 0.012), 0.99, 1.0); // brighter, nearer dust drifts further
+  vColor = aColor * (0.62 + 0.38 * sin(uTime * (0.5 + aPhase * 2.0) + aPhase * 6.3)); // twinkle
+  vec2 p = vec2(mod(position.x + 1.0 - uTime * (0.001 + aSize * 0.0035), 2.0) - 1.0, position.y); // drift past, nearer stars faster
+  gl_Position = vec4(p - uMouse * (0.004 + aSize * 0.012), 0.99, 1.0); // brighter, nearer dust leans further
   gl_PointSize = max(1.0, aSize * uDpr);
 }`;
 const DUST_F = `varying vec3 vColor;
@@ -302,25 +310,30 @@ export function mountGlobe({ layer, canvas, target, hint, tip, describe = (t) =>
   const arcs = new THREE.LineSegments(new THREE.BufferGeometry(), arcMat);
   overlay.add(spikes, caps, arcs);
 
-  // deep-space backdrop: a slow green nebula and fixed dust, both in screen space
+  // deep-space backdrop in screen space: the painted sky (nebulae, Milky Way) with drifting, twinkling stars over it
+  const skyTex = new THREE.CanvasTexture(paintSky(2, 2)); // left sRGB-encoded: SKY_F blends it like the 2D canvas does
   const sky = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
-    vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.999, 1.0); }`, fragmentShader: SKY_F, uniforms: U, depthWrite: false, depthTest: false,
+    vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.999, 1.0); }`, fragmentShader: SKY_F,
+    uniforms: { ...U, uSky: { value: skyTex }, uAspect: { value: 1 } }, depthWrite: false, depthTest: false,
   }));
   let seed = 46630;
   const rnd = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
-  const n = small ? 520 : 1100, dp = [], ds = [], dc = [];
+  const TINTS = ["#ffffff", "#d6e4ff", "#fff0d6", "#c4ffd6", "#7dffa0"]; // white, blue-white, warm and the terminal's greens
+  const n = small ? 900 : 1800, dp = [], ds = [], dc = [], dph = [];
   for (let i = 0; i < n; i++) {
     const k = rnd();
     dp.push(rnd() * 2 - 1, rnd() * 2 - 1, 0);
-    ds.push(k > 0.985 ? 2.2 : k > 0.86 ? 1.3 : 0.7);
-    const c = new THREE.Color(k > 0.93 ? "#b9ffcb" : rnd() > 0.7 ? "#7dffa0" : "#5c8f6b").multiplyScalar(k > 0.985 ? 0.9 : 0.08 + rnd() * 0.3);
+    ds.push(k > 0.985 ? 2.6 : k > 0.86 ? 1.5 : 0.8);
+    const c = new THREE.Color(TINTS[(rnd() * TINTS.length) | 0]).multiplyScalar(k > 0.985 ? 1 : 0.18 + rnd() * 0.5);
     dc.push(c.r, c.g, c.b);
+    dph.push(rnd());
   }
   const dustGeo = new THREE.BufferGeometry();
   dustGeo.setAttribute("position", new THREE.Float32BufferAttribute(dp, 3));
   dustGeo.setAttribute("aSize", new THREE.Float32BufferAttribute(ds, 1));
   dustGeo.setAttribute("aColor", new THREE.Float32BufferAttribute(dc, 3));
-  const dust = new THREE.Points(dustGeo, new THREE.ShaderMaterial({ vertexShader: DUST_V, fragmentShader: DUST_F, uniforms: { uDpr: { value: 1 }, uMouse: U.uMouse }, depthWrite: false, depthTest: false }));
+  dustGeo.setAttribute("aPhase", new THREE.Float32BufferAttribute(dph, 1));
+  const dust = new THREE.Points(dustGeo, new THREE.ShaderMaterial({ vertexShader: DUST_V, fragmentShader: DUST_F, uniforms: { uDpr: { value: 1 }, uMouse: U.uMouse, uTime: U.uTime }, depthWrite: false, depthTest: false }));
   [sky, dust].forEach((o, i) => { o.frustumCulled = false; o.renderOrder = i - 21; scene.add(o); });
 
   const composer = new EffectComposer(renderer);
@@ -417,6 +430,11 @@ export function mountGlobe({ layer, canvas, target, hint, tip, describe = (t) =>
     renderer.setPixelRatio(pr); renderer.setSize(w, h, false);
     composer.setPixelRatio(pr); composer.setSize(w, h);
     dust.material.uniforms.uDpr.value = pr;
+    const k = Math.min(1, 1280 / w); // the sky is soft, so a capped size is enough
+    skyTex.dispose(); // the GPU copy has a fixed size, so a new size needs a fresh upload
+    skyTex.image = paintSky(Math.round(w * k), Math.round(h * k));
+    skyTex.needsUpdate = true;
+    sky.material.uniforms.uAspect.value = w / h;
     lastScroll = null;
     measure();
   }

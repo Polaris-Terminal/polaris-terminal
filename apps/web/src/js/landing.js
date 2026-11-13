@@ -5,7 +5,7 @@ import {
 import { lineChart, projection } from "./chart.js";
 import { loadVaults, loadBeacon } from "./chain.js";
 import { northScore } from "./score.js";
-import { scramble, decodeOnHover, cursorHud, spotlight, ripples, scrollSpy, clock } from "./fx.js";
+import { scramble, decodeOnHover, ripples, scrollSpy, clock } from "./fx.js";
 import { splash } from "./splash.js";
 import { mountConsole, pad, meter } from "./console.js";
 
@@ -18,8 +18,6 @@ const logDate = new Date(CONFIG.deployedAt).toLocaleDateString("en-US", { month:
 $$("[data-date]").forEach((el) => (el.textContent = logDate));
 
 // ---------- interaction layer ----------
-cursorHud($("#hud"));
-spotlight(".spot");
 ripples(".btn, .icon-btn, .chip, .seg button, .rank-row");
 decodeOnHover(".btn, .nav-links a, .chip, .tlink, .foot a");
 scrollSpy($$(".nav-links a[href^='#']"));

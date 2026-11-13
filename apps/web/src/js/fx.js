@@ -1,5 +1,4 @@
-// Terminal micro-interactions: text that decodes out of noise, a targeting cursor that locks onto whatever
-// is clickable, a phosphor spotlight on panels, click ripples, scroll spy and a UTC clock.
+// Terminal micro-interactions: text that decodes out of noise, click ripples, scroll spy and a UTC clock.
 const GLYPHS = "!<>-_\\/[]{}=+*^?#01ABCDEF$%&";
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -35,46 +34,6 @@ export function decodeOnHover(sel) {
     const el = e.target.closest?.(sel);
     if (el && !el.contains(e.relatedTarget)) scramble(el, 320);
   });
-}
-
-// Targeting reticle with page coordinates; corner brackets lock onto the hovered control
-export function cursorHud(root) {
-  if (!root || reduce || !matchMedia("(hover: hover) and (pointer: fine)").matches) return root?.remove();
-  const ring = root.querySelector(".hud-ring"), xy = root.querySelector(".hud-xy"), lock = root.querySelector(".hud-lock");
-  let x = -99, y = -99, rx = x, ry = y, locked = null, box = "";
-  addEventListener("pointermove", (e) => { x = e.clientX; y = e.clientY; root.classList.add("on"); }, { passive: true });
-  document.documentElement.addEventListener("pointerleave", () => root.classList.remove("on"));
-  document.addEventListener("pointerover", (e) => {
-    locked = e.target.closest?.("a, button, input, label, [data-lock]") || null;
-    root.classList.toggle("locked", !!locked);
-    root.classList.toggle("grab", !locked && !!e.target.closest?.(".globe-target"));
-  });
-  (function loop() {
-    rx += (x - rx) * 0.3; ry += (y - ry) * 0.3;
-    ring.style.transform = `translate(${rx}px, ${ry}px)`;
-    xy.textContent = `${String(Math.round(x)).padStart(4, "0")}.${String(Math.round(y + scrollY)).padStart(5, "0")}`;
-    if (locked?.isConnected) {
-      const r = locked.getBoundingClientRect(), b = `${r.left - 6},${r.top - 6},${r.width + 12},${r.height + 12}`;
-      if (b !== box) {
-        box = b;
-        lock.style.transform = `translate(${r.left - 6}px, ${r.top - 6}px)`;
-        lock.style.width = r.width + 12 + "px";
-        lock.style.height = r.height + 12 + "px";
-      }
-    }
-    requestAnimationFrame(loop);
-  })();
-}
-
-// Phosphor spotlight that follows the pointer across panels
-export function spotlight(sel) {
-  document.addEventListener("pointermove", (e) => {
-    const el = e.target.closest?.(sel);
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    el.style.setProperty("--mx", e.clientX - r.left + "px");
-    el.style.setProperty("--my", e.clientY - r.top + "px");
-  }, { passive: true });
 }
 
 export function ripples(sel) {
