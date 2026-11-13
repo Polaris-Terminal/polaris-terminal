@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 const NETWORK = process.env.NETWORK || "robinhoodTestnet";
 // The launched $POLARIS contract address, given by the owner (never the testnet token from deployments). Empty keeps it off the site.
-const POLARIS_CA = "";
+const POLARIS_CA = "0xF7C218c1597F6acbb2969A0b78C79e37a020E10a";
 const CHAINS = {
   robinhoodTestnet: {
     id: 46630, name: "Robinhood Chain Testnet", testnet: true,
