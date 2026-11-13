@@ -5,14 +5,21 @@ import http from "node:http";
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, createReadStream } from "node:fs";
 import { join, extname, resolve } from "node:path";
 import { northScore, hourly } from "./score.mjs";
+import { abiString } from "./abi.mjs";
 
 const NETS = {
   robinhoodTestnet: { rpc: "https://rpc.testnet.chain.robinhood.com", explorer: "https://explorer.testnet.chain.robinhood.com" },
-  robinhood: { rpc: "https://rpc.mainnet.chain.robinhood.com", explorer: "https://robinhoodchain.blockscout.com" },
+  // The mainnet explorer's own API sits behind a bot wall, so mainnet reads go through the keyed Blockscout API
+  // and contract verification is read from Sourcify.
+  robinhood: { rpc: "https://rpc.mainnet.chain.robinhood.com", explorer: "https://robinhoodchain.blockscout.com", api: "https://api.blockscout.com/4663/api/v2", sourcify: 4663 },
 };
 const NETWORK = process.env.NETWORK || "robinhoodTestnet";
 const RPC = process.env.RPC_URL || NETS[NETWORK].rpc;
 const EXPLORER = process.env.EXPLORER_URL || NETS[NETWORK].explorer;
+const EXPLORER_API = process.env.EXPLORER_API || NETS[NETWORK].api || EXPLORER + "/api/v2";
+const EXPLORER_KEY = process.env.EXPLORER_API_KEY;
+const SOURCIFY = NETS[NETWORK].sourcify;
+const HOLDERS_MS = +(process.env.HOLDERS_MINUTES || 2.5) * 60e3; // the keyed API is metered, so mainnet refreshes less often
 const PORT = +(process.env.PORT || 8787);
 const HOST = process.env.HOST || "127.0.0.1";
 const DATA = resolve(process.env.DATA_DIR || "data");
@@ -60,7 +67,8 @@ let explorerChain = Promise.resolve();
 function explorer(path) {
   const run = explorerChain.then(async () => {
     await new Promise((r) => setTimeout(r, 220));
-    const r = await fetch(EXPLORER + "/api/v2" + path, { signal: AbortSignal.timeout(15_000), headers: { accept: "application/json" } });
+    const headers = { accept: "application/json", ...(EXPLORER_KEY && { authorization: `Bearer ${EXPLORER_KEY}` }) };
+    const r = await fetch(EXPLORER_API + path, { signal: AbortSignal.timeout(15_000), headers });
     if (r.status === 404) return null;
     if (!r.ok) throw new Error(`explorer ${r.status} ${path}`);
     return r.json();
@@ -105,29 +113,36 @@ async function scanMints() {
   }
 }
 
+// ERC-20 string/uint reads straight from the chain, so dating a token costs one explorer call
+const call = (to, data) => rpc("eth_call", [{ to, data }, "latest"]).catch(() => "0x");
+
 async function enrich(a) {
   const addr = await explorer(`/addresses/${a}`);
   const txHash = addr?.creation_transaction_hash || addr?.creation_tx_hash;
   if (!txHash) { state.old[a] = true; pending.delete(a); return; }
-  const tx = await explorer(`/transactions/${txHash}`);
-  const bornAt = Date.parse(tx?.timestamp);
+  const tx = await rpc("eth_getTransactionByHash", [txHash]);
+  const block = tx && await rpc("eth_getBlockByNumber", [tx.blockNumber, false]);
+  const bornAt = block && Number(block.timestamp) * 1000;
   if (!bornAt || Date.now() - bornAt > WINDOW_MS) { state.old[a] = true; pending.delete(a); return; }
-  const tok = await explorer(`/tokens/${a}`);
-  if (!tok || tok.type !== "ERC-20" || !tok.symbol) { state.old[a] = true; pending.delete(a); return; }
+  const [name, symbol, decimals, supply] = await Promise.all(["0x06fdde03", "0x95d89b41", "0x313ce567", "0x18160ddd"].map((d) => call(a, d)));
+  const sym = symbol.length > 2 && abiString(symbol).trim();
+  if (!sym || decimals.length < 66) { state.old[a] = true; pending.delete(a); return; } // not an ERC-20
   state.tokens[a] = {
-    address: addr.hash || a, name: tok.name || tok.symbol, symbol: tok.symbol, decimals: +tok.decimals || 18,
-    holders: +tok.holders_count || 0, supply: tok.total_supply, bornAt, bornBlock: +tx.block_number || +tx.block,
+    address: addr.hash || a, name: abiString(name).trim() || sym, symbol: sym, decimals: Number(BigInt(decimals)) || 18,
+    holders: 0, supply: BigInt(supply.length > 2 ? supply : 0).toString(), bornAt, bornBlock: Number(tx.blockNumber),
     creator: addr.creator_address_hash, verified: !!addr.is_verified, mints: 1, lastMint: Date.now(),
   };
   pending.delete(a);
 }
 
+// Holder counts for the tokens on the radar; the rest of the window only ages out.
 async function refreshHolders() {
   const now = Date.now();
-  for (const [a, t] of Object.entries(state.tokens)) {
-    if (now - t.bornAt > WINDOW_MS) { delete state.tokens[a]; state.old[a] = true; continue; }
+  for (const [a, t] of Object.entries(state.tokens)) if (now - t.bornAt > WINDOW_MS) { delete state.tokens[a]; state.old[a] = true; }
+  for (const { address } of drift(40).tokens) {
+    const a = address.toLowerCase(), t = state.tokens[a];
     const c = await explorer(`/tokens/${a}/counters`).catch(() => null);
-    if (c) { t.holders = +c.token_holders_count || t.holders; t.transfers = +c.transfers_count || t.transfers; }
+    if (c && t) { t.holders = +c.token_holders_count || t.holders; t.transfers = +c.transfers_count || t.transfers; }
   }
 }
 
@@ -169,10 +184,13 @@ async function scanBeacon() {
 }
 
 // ---------- contract registry (verification status) ----------
+const sourcified = (a) => fetch(`https://sourcify.dev/server/v2/contract/${SOURCIFY}/${a}`, { signal: AbortSignal.timeout(15_000) })
+  .then((r) => (r.ok ? r.json() : null)).then((j) => !!j?.match);
+const isVerified = (a) => (SOURCIFY ? sourcified(a) : explorer(`/addresses/${a}`).then((p) => !!p?.is_verified));
 async function refreshContracts() {
   for (const [key, c] of Object.entries(deployments?.contracts || {})) {
-    const [p, i] = await Promise.all([explorer(`/addresses/${c.proxy}`), explorer(`/addresses/${c.implementation}`)]);
-    state.contracts[key] = { key, name: c.name, proxy: c.proxy, implementation: c.implementation, verified: !!(p?.is_verified && i?.is_verified) };
+    const [p, i] = await Promise.all([isVerified(c.proxy), isVerified(c.implementation)]);
+    state.contracts[key] = { key, name: c.name, proxy: c.proxy, implementation: c.implementation, verified: p && i };
   }
 }
 
@@ -251,7 +269,7 @@ function every(ms, fn, name) {
 enrichWorker();
 every(12_000, scanMints, "mints");
 every(15_000, scanBeacon, "beacon");
-every(150_000, refreshHolders, "holders");
+every(HOLDERS_MS, refreshHolders, "holders");
 every(300_000, refreshStats, "stats");
 every(600_000, refreshContracts, "contracts");
 setInterval(save, 60_000);

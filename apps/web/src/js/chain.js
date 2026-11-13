@@ -16,17 +16,18 @@ export function vaultScore(v) {
 export async function loadVaults() {
   const vaults = CONFIG.vaults.map((v) => ({ ...v }));
   await Promise.all(vaults.map(async (v) => {
-    const [ta, rate, end, active, asset] = await Promise.all([
+    const [ta, locked, end, active, asset] = await Promise.all([
       ethCall(v.address, sel("PolarisVault", "totalAssets")),
-      ethCall(v.address, sel("PolarisVault", "rewardRate")),
+      ethCall(v.address, sel("PolarisVault", "lockedRewards")),
       ethCall(v.address, sel("PolarisVault", "rewardEnd")),
       CONFIG.registry ? ethCall(CONFIG.registry, sel("PolarisRegistry", "isActive") + encAddr(v.address)) : "0x1",
       ethCall(v.address, sel("PolarisVault", "asset")),
     ]);
     v.tvl = fromUnits(word(ta, 0), A.decimals);
     v.liq = v.tvl; // ERC-4626 vault holds its assets idle, so all of it is withdrawable
-    v.rate = fromUnits(word(rate, 0), A.decimals);
     v.rewardEnd = Number(word(end, 0)) * 1000;
+    // locked / time left equals rewardRate() but keeps the fraction the contract's integer division drops on small vaults
+    v.rate = fromUnits(word(locked, 0), A.decimals) / Math.max(1, (v.rewardEnd - Date.now()) / 1000);
     v.apy = v.tvl ? (v.rate * YEAR) / v.tvl * 100 : 0;
     v.ok = word(active, 0) === 1n && ("0x" + asset.slice(-40)).toLowerCase() === A.address.toLowerCase();
   }));
@@ -39,14 +40,14 @@ export async function loadBalances(account) {
   const out = { eth: 0, asset: 0n, shares: {}, assets: {}, allowance: {} };
   const [eth, bal] = await Promise.all([
     rpc("eth_getBalance", [account, "latest"]),
-    ethCall(A.address, sel("PolarisDollar", "balanceOf") + encAddr(account)),
+    ethCall(A.address, sel("ERC20", "balanceOf") + encAddr(account)),
   ]);
   out.eth = Number(BigInt(eth)) / 1e18;
   out.asset = word(bal, 0);
   await Promise.all(CONFIG.vaults.map(async (v) => {
     const [sh, al] = await Promise.all([
       ethCall(v.address, sel("PolarisVault", "balanceOf") + encAddr(account)),
-      ethCall(A.address, sel("PolarisDollar", "allowance") + encAddr(account) + encAddr(v.address)),
+      ethCall(A.address, sel("ERC20", "allowance") + encAddr(account) + encAddr(v.address)),
     ]);
     out.shares[v.address] = word(sh, 0);
     out.allowance[v.address] = word(al, 0);

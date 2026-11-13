@@ -12,6 +12,14 @@ export default defineConfig({
     settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun" },
   },
   networks: {
+    // Rehearsal: npx hardhat run scripts/deploy.ts --network robinhoodFork (mainnet state; fork gas pricing differs, so cost comes from the real chain)
+    robinhoodFork: {
+      type: "edr-simulated",
+      chainType: "generic",
+      chainId: 4663,
+      forking: { url: "https://rpc.mainnet.chain.robinhood.com" },
+      accounts: [{ privateKey: configVariable("DEPLOYER_PRIVATE_KEY"), balance: "1000000000000000000" }],
+    },
     robinhoodTestnet: {
       type: "http",
       chainType: "generic",

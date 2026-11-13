@@ -35,7 +35,8 @@ const config = {
   deployedAt: dep.deployedAt,
   // $POLARIS launches elsewhere; its address goes on the site only once that launch is live
   contracts: Object.entries(c).filter(([key]) => key !== "token").map(([key, v]) => ({ key, name: v.name, proxy: v.proxy, implementation: v.implementation, version: "1.0.0" })),
-  selectors: dep.selectors,
+  // the vault asset is plain ERC-20 (pUSD on testnet, USDG on mainnet)
+  selectors: { ...dep.selectors, ERC20: { balanceOf: "0x70a08231", allowance: "0xdd62ed3e", approve: "0x095ea7b3" } },
   beacon: c.beacon?.proxy,
   registry: c.registry?.proxy,
   asset: c.dollar ? { address: c.dollar.proxy, symbol: "pUSD", decimals: 6 } : { address: dep.asset?.address, symbol: "USDG", decimals: 6 },

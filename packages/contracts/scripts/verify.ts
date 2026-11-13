@@ -1,5 +1,5 @@
 // Verifies every implementation and PolarisProxy listed in deployments/<network>.json on Blockscout.
-// Usage: npx hardhat run scripts/verify.ts --network robinhoodTestnet
+// Usage: npx hardhat run scripts/verify.ts --network robinhoodTestnet   (VERIFY_PROVIDER=sourcify to verify on Sourcify)
 import hre from "hardhat";
 import { verifyContract } from "@nomicfoundation/hardhat-verify/verify";
 import { readFileSync } from "node:fs";
@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 const { networkName } = await hre.network.create();
 const dep = JSON.parse(readFileSync(`deployments/${networkName}.json`, "utf8"));
 const done = new Set<string>();
+const provider = (process.env.VERIFY_PROVIDER || "blockscout") as "blockscout" | "sourcify";
 
 const explorerApi = hre.config.chainDescriptors.get(BigInt(dep.chainId))?.blockExplorers.blockscout?.url + "/api/v2";
 
@@ -22,7 +23,7 @@ async function verify(address: string, contract: string, constructorArgs: unknow
   done.add(address);
   if (await fullyVerified(address)) return console.log(`already verified ${contract} ${address}`);
   try {
-    await verifyContract({ address, contract, constructorArgs, provider: "blockscout", force: true }, hre);
+    await verifyContract({ address, contract, constructorArgs, provider, force: true }, hre);
     console.log(`verified ${contract} ${address}`);
   } catch (e) {
     const msg = (e as Error).message;

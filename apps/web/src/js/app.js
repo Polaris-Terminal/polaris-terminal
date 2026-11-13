@@ -233,7 +233,7 @@ async function vaults() {
   const daysLeft = Math.max(1, Math.round((chosen.rewardEnd - Date.now()) / 864e5));
   $("#vDetail").innerHTML = [
     ["APY", pct(chosen.apy)], ["In vault", usd(chosen.tvl)],
-    ["Yield stream", `${(chosen.rate * 86400).toLocaleString("en-US", { maximumFractionDigits: 0 })} ${A.symbol}/day`],
+    ["Yield stream", `${(chosen.rate * 86400).toLocaleString("en-US", { maximumSignificantDigits: 3 })} ${A.symbol}/day`],
     ["Stream runs", chosen.rewardEnd > Date.now() ? `${daysLeft} more day${daysLeft > 1 ? "s" : ""}` : "topping up"],
   ].map(([k, v]) => `<div><span class="label">${k}</span><b>${esc(v)}</b></div>`).join("");
   drawChart();
@@ -345,7 +345,7 @@ $("#goBtn").addEventListener("click", async () => {
   const steps = [];
   if (mode === "dep") {
     if (amt > bal.asset) return toast(`Balance changed, not enough ${A.symbol}`, true);
-    if (bal.allowance[v.address] < amt) steps.push({ label: `Approve ${fromUnits(amt, A.decimals).toLocaleString("en-US")} ${A.symbol}`, to: A.address, data: sel("PolarisDollar", "approve") + encAddr(v.address) + encU(amt) });
+    if (bal.allowance[v.address] < amt) steps.push({ label: `Approve ${fromUnits(amt, A.decimals).toLocaleString("en-US")} ${A.symbol}`, to: A.address, data: sel("ERC20", "approve") + encAddr(v.address) + encU(amt) });
     steps.push({ label: `Deposit into ${v.name}`, to: v.address, data: sel("PolarisVault", "deposit") + encU(amt) + encAddr(me) });
   } else if (maxMode) {
     steps.push({ label: "Redeem all shares", to: v.address, data: sel("PolarisVault", "redeem") + encU(bal.shares[v.address]) + encAddr(me) + encAddr(me) });
