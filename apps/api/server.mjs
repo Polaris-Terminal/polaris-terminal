@@ -14,6 +14,7 @@ const NETWORK = process.env.NETWORK || "robinhoodTestnet";
 const RPC = process.env.RPC_URL || NETS[NETWORK].rpc;
 const EXPLORER = process.env.EXPLORER_URL || NETS[NETWORK].explorer;
 const PORT = +(process.env.PORT || 8787);
+const HOST = process.env.HOST || "127.0.0.1";
 const DATA = resolve(process.env.DATA_DIR || "data");
 const STATIC = process.env.STATIC_DIR && resolve(process.env.STATIC_DIR);
 const DEPLOY = resolve(process.env.DEPLOYMENTS || `../../packages/contracts/deployments/${NETWORK}.json`);
@@ -69,6 +70,17 @@ const hex = (n) => "0x" + n.toString(16);
 
 // ---------- the drift: mint scanner ----------
 const pending = new Set();
+const queue = [];
+
+// One token at a time, newest first: each token is fully dated before the next starts,
+// so the radar fills from the freshest blocks instead of waiting on the whole backlog.
+async function enrichWorker() {
+  for (;;) {
+    const a = queue.pop();
+    if (!a) { await new Promise((r) => setTimeout(r, 1000)); continue; }
+    await enrich(a).catch((e) => { pending.delete(a); console.warn("enrich", a, e.message); });
+  }
+}
 
 async function scanMints() {
   const head = Number(BigInt(await rpc("eth_blockNumber", [])));
@@ -83,7 +95,7 @@ async function scanMints() {
       if (state.old[a]) continue;
       const t = state.tokens[a];
       if (t) { t.mints++; t.lastMint = Date.now(); }
-      else if (!pending.has(a)) { pending.add(a); enrich(a).catch((e) => { pending.delete(a); console.warn("enrich", a, e.message); }); }
+      else if (!pending.has(a)) { pending.add(a); queue.push(a); }
     }
     state.scanned = to;
     from = to + 1;
@@ -204,16 +216,21 @@ http.createServer((req, res) => {
     }
     return;
   }
-  // Static files only in local dev; nginx serves them in production.
-  if (STATIC && req.method === "GET") {
+  // Static site (Traefik in front handles TLS, compression and security headers).
+  if (STATIC && (req.method === "GET" || req.method === "HEAD")) {
     let p = join(STATIC, decodeURIComponent(url.pathname));
     if (!p.startsWith(STATIC)) return res.writeHead(403).end();
     if (existsSync(p) && statSync(p).isDirectory()) p = join(p, "index.html");
     if (!existsSync(p) && existsSync(p + ".html")) p += ".html";
-    if (existsSync(p)) { res.writeHead(200, { "content-type": MIME[extname(p)] || "application/octet-stream" }); return createReadStream(p).pipe(res); }
+    const found = existsSync(p);
+    if (!found) p = join(STATIC, "index.html");
+    const ext = extname(p);
+    const cache = ext === ".html" ? "no-cache" : p.includes("/assets/") ? "public, max-age=604800" : "public, max-age=300, must-revalidate";
+    res.writeHead(found ? 200 : 404, { "content-type": MIME[ext] || "application/octet-stream", "cache-control": cache });
+    return req.method === "HEAD" ? res.end() : createReadStream(p).pipe(res);
   }
   res.writeHead(404, { "content-type": "application/json" }).end('{"error":"not found"}');
-}).listen(PORT, "127.0.0.1", () => console.log(`polaris api :${PORT} ${NETWORK}`));
+}).listen(PORT, HOST, () => console.log(`polaris ${HOST}:${PORT} ${NETWORK}`));
 
 // ---------- loops ----------
 function every(ms, fn, name) {
@@ -226,6 +243,7 @@ function every(ms, fn, name) {
   tick();
   setInterval(tick, ms);
 }
+enrichWorker();
 every(12_000, scanMints, "mints");
 every(15_000, scanBeacon, "beacon");
 every(150_000, refreshHolders, "holders");

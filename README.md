@@ -15,7 +15,7 @@ On Robinhood Chain a new token is born every minute. Everyone moves and almost n
 apps/web            static site: HTML, CSS, vanilla JS modules, GSAP, Lenis, three.js
 apps/api            zero-dependency Node signal API (drift scanner, pulse, beacon board)
 packages/contracts  Solidity, Hardhat 3, OpenZeppelin UUPS upgradeable contracts
-infra               nginx and systemd templates, provisioning and deploy scripts
+infra               systemd + Traefik templates and the deploy script
 ```
 
 ## Contracts

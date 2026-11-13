@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-# Builds locally and ships to the VPS. The VPS only stores static files and the zero-dependency API.
+# Builds locally and ships to the shared VPS: static site + zero-dependency API run as polaris@<env>,
+# routed by the existing Coolify Traefik (which also issues the TLS certificate).
 # Usage: infra/deploy.sh testnet|mainnet
 set -euo pipefail
 ENV="${1:?usage: deploy.sh testnet|mainnet}"
 HOST="${POLARIS_HOST:-polaris}"
 case "$ENV" in
-  testnet) NETWORK=robinhoodTestnet; DOMAIN=testnet.polaristerminal.tech; PORT=8787
+  testnet) NETWORK=robinhoodTestnet; HOSTS='Host(`testnet.polaristerminal.tech`)'; DOMAIN=testnet.polaristerminal.tech; PORT=3701
            RPCS="https://rpc.testnet.chain.robinhood.com"; EXPLORER=https://explorer.testnet.chain.robinhood.com ;;
-  mainnet) NETWORK=robinhood; DOMAIN=polaristerminal.tech; PORT=8788
+  mainnet) NETWORK=robinhood; HOSTS='Host(`polaristerminal.tech`) || Host(`www.polaristerminal.tech`)'; DOMAIN=polaristerminal.tech; PORT=3801
            RPCS="https://rpc.mainnet.chain.robinhood.com https://robinhood.drpc.org https://robinhood-rpc.publicnode.com"; EXPLORER=https://robinhoodchain.blockscout.com ;;
   *) echo "unknown env $ENV"; exit 1 ;;
 esac
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEP="$ROOT/packages/contracts/deployments/$NETWORK.json"
+DIR="/opt/polaris/$ENV"
 [ -f "$DEP" ] || { echo "missing $DEP"; exit 1; }
 
 echo "› checking every contract is verified on $EXPLORER"
@@ -33,15 +35,15 @@ const dep = require(process.argv[1]); const ex = process.argv[2];
 echo "› building web for $NETWORK"
 (cd "$ROOT/apps/web" && NETWORK=$NETWORK node build.mjs)
 
-echo "› shipping to $HOST"
-ssh "$HOST" "mkdir -p /var/www/polaris-$ENV /opt/polaris-$ENV/api /opt/polaris-$ENV/data && id polaris >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin polaris; chown -R polaris /opt/polaris-$ENV/data"
-rsync -az --delete "$ROOT/apps/web/dist/" "$HOST:/var/www/polaris-$ENV/"
-rsync -az --delete --exclude data --exclude '*.test.mjs' --exclude package.json "$ROOT/apps/api/" "$HOST:/opt/polaris-$ENV/api/"
-rsync -az "$DEP" "$HOST:/opt/polaris-$ENV/deployments.json"
+echo "› shipping to $HOST:$DIR"
+ssh "$HOST" "id polaris >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin polaris; mkdir -p $DIR/web $DIR/api $DIR/data && chown polaris $DIR/data"
+rsync -az --delete "$ROOT/apps/web/dist/" "$HOST:$DIR/web/"
+rsync -az --delete --exclude '*.test.mjs' --exclude package.json --exclude data "$ROOT/apps/api/" "$HOST:$DIR/api/"
+rsync -az "$DEP" "$HOST:$DIR/deployments.json"
+printf 'NETWORK=%s\nPORT=%s\nSTATIC_DIR=%s/web\nDATA_DIR=%s/data\nDEPLOYMENTS=%s/deployments.json\n' "$NETWORK" "$PORT" "$DIR" "$DIR" "$DIR" | ssh "$HOST" "cat > $DIR/polaris.env"
 
-fill() { sed -e "s#__ENV__#$ENV#g; s#__NETWORK__#$NETWORK#g; s#__DOMAIN__#$DOMAIN#g; s#__PORT__#$PORT#g; s#__RPCS__#$RPCS#g; s#__EXPLORER__#$EXPLORER#g" "$1"; }
-fill "$ROOT/infra/nginx.conf.tpl" | ssh "$HOST" "cat > /etc/nginx/sites-available/polaris-$ENV && ln -sf /etc/nginx/sites-available/polaris-$ENV /etc/nginx/sites-enabled/polaris-$ENV"
-fill "$ROOT/infra/polaris-api.service.tpl" | ssh "$HOST" "cat > /etc/systemd/system/polaris-api-$ENV.service"
-ssh "$HOST" "systemctl daemon-reload && systemctl enable --now polaris-api-$ENV && systemctl restart polaris-api-$ENV && nginx -t && systemctl reload nginx"
-ssh "$HOST" "test -d /etc/letsencrypt/live/$DOMAIN || certbot --nginx -d $DOMAIN --non-interactive --agree-tos -m rubencahyadi504@gmail.com --redirect"
+fill() { sed -e "s#__ENV__#$ENV#g; s#__HOSTS__#$HOSTS#g; s#__PORT__#$PORT#g; s#__RPCS__#$RPCS#g; s#__EXPLORER__#$EXPLORER#g" "$1"; }
+ssh "$HOST" "cat > /etc/systemd/system/polaris@.service" < "$ROOT/infra/polaris.service.tpl"
+fill "$ROOT/infra/traefik.yaml.tpl" | ssh "$HOST" "cat > /data/coolify/proxy/dynamic/polaris-$ENV.yaml"
+ssh "$HOST" "systemctl daemon-reload && systemctl enable --now polaris@$ENV && systemctl restart polaris@$ENV && sleep 2 && systemctl is-active polaris@$ENV"
 echo "› live: https://$DOMAIN"
