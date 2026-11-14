@@ -22,7 +22,7 @@
   <div class="wrap">
     <a class="brand" href="/"><img class="logo" src="/assets/logo-96.jpg" alt="" width="28" height="28">Polaris Terminal<small class="hide-sm" data-net-tag>Testnet</small></a>
     <nav class="nav-links" aria-label="Docs">
-      <a href="#drift">Drift</a><a href="#score">North Score</a><a href="#vaults">Vaults</a><a href="#beacon">Beacon</a><a href="#orbit">Orbit</a><a href="#contracts">Contracts</a>
+      <a href="#drift">Drift</a><a href="#score">North Score</a><a href="#vaults">Vaults</a><a href="#beacon">Beacon</a><a href="#orbit">Orbit</a><a href="#constellation">Constellation</a><a href="#contracts">Contracts</a>
     </nav>
     <div class="nav-right">
       <a class="icon-btn" href="https://x.com/UsePolarisTech" target="_blank" rel="noopener" aria-label="Polaris Terminal on X" title="Follow on X" data-icon="x"></a>
@@ -35,7 +35,7 @@
 
 <main class="wrap docs">
   <aside class="toc label">
-    <a href="#drift">The Drift</a><a href="#score">North Score</a><a href="#vaults">North Vaults</a><a href="#beacon">Beacon</a><a href="#orbit">Orbit · v2.0</a><a href="#contracts">Contracts</a><a href="#network">Network</a>
+    <a href="#drift">The Drift</a><a href="#score">North Score</a><a href="#vaults">North Vaults</a><a href="#beacon">Beacon</a><a href="#orbit">Orbit · v2.0</a><a href="#constellation">Constellation · v3.0</a><a href="#contracts">Contracts</a><a href="#network">Network</a>
   </aside>
   <article>
     <h1 class="display">Field manual</h1>
@@ -113,6 +113,48 @@ public        5             every 60s      last 6h
 holder        25            every 15s      full 48h
 
 holder = the connected wallet holds 10,000 $POLARIS (balance read only, no staking)</code></pre>
+
+    <h2 id="constellation">Constellation · v3.0</h2>
+    <p>Constellation opens Polaris up: the same signals for your bots and sites, filters you write yourself, a scan of any wallet, and a say in what the score weighs next.</p>
+
+    <h3 id="api">Public API</h3>
+    <p>Every endpoint the terminal reads is public under <code>/api/v1</code>, with CORS open to any origin. Answers are JSON; addresses are lowercase <code>0x</code> strings.</p>
+    <pre><code>GET /api/v1/drift?limit=40&amp;launchpad=&amp;rule=   newborn tokens, strongest pull first
+GET /api/v1/token?a=&lt;token&gt;                       one token: score history, events, cluster, deployer, pools
+GET /api/v1/deployer?a=&lt;wallet&gt;                   a creator's launches and how they went
+GET /api/v1/portfolio?a=&lt;wallet&gt;                  risk profile of a wallet's holdings
+GET /api/v1/alerts?a=&lt;token,token&gt;               watchlist events
+GET /api/v1/record · launchpads · integrity · pulse · governance · health
+GET /api/v1/badge?a=&lt;token&gt;                       SVG score badge</code></pre>
+    <pre><code>              requests a minute   counted per
+no key        120                 IP address
+key           120                 key
+holder key    1,200               key (wallet holds 10,000 $POLARIS)</code></pre>
+    <p>Get a key in the terminal under <b>council</b>: your wallet signs one message, nothing is sent on-chain. Pass it as the <code>x-polaris-key</code> header or the <code>key</code> query parameter. A key carries its wallet's holder tier everywhere, including the 48h score history. Issuing a new key revokes the old one. Every answer carries <code>x-ratelimit-limit</code>, <code>-remaining</code> and <code>-reset</code>; going over returns <code>429</code>.</p>
+
+    <h3 id="rules">Custom rules</h3>
+    <p>A rule is a list of conditions a token must all pass. Save up to eight in the terminal, filter the radar with one, and get an alert when a new token starts matching. The same text works as the <code>rule</code> parameter of <code>/api/v1/drift</code>.</p>
+    <pre><code>numbers   score  holders  mints  age (minutes, or 30m 6h 1d)
+compare   &gt;=  &lt;=  &gt;  &lt;  =  !=
+flags     verified  stock (canonical stock token)  fake (imitates a ticker)  direct (no launchpad)
+negate    !fake  !direct
+
+score&gt;=60 holders&gt;=25 age&lt;6h !fake</code></pre>
+
+    <h3 id="portfolio">Portfolio scan</h3>
+    <p>Polaris reads a wallet's balance in every token it knows, in one Multicall3 call: the 48h Drift, every launch graded in the last 30 days and every canonical stock token. Each holding gets a risk level from its own history:</p>
+    <pre><code>high   imitates a stock ticker, rugged in its first day, cluster level high, or the deployer sold 25%+
+watch  cluster level watch, the deployer sold 5%+, North Score under 20, or faded after a day
+clear  none of the above; canonical stock tokens are always clear</code></pre>
+
+    <h3 id="widget">Score widget</h3>
+    <p>Any site, forum or community page can show a token's live North Score. The badge is an SVG that refreshes every minute and links back to the token in the terminal. Press <b>Embed</b> on any token to copy it:</p>
+    <pre><code>&lt;a href="https://polaristerminal.tech/app?t=0x…"&gt;&lt;img src="https://polaristerminal.tech/api/v1/badge?a=0x…" alt="North Score"&gt;&lt;/a&gt;</code></pre>
+
+    <h3 id="governance">Signal governance</h3>
+    <p>$POLARIS holders decide what the score should weigh next. A ballot spreads 100 points over six signals: holder spread, mint activity, freshness, verified source, cluster detection and deployer history. The wallet signs its ballot (free, no transaction) and it counts with the $POLARIS that wallet holds at the moment of every tally, so selling takes the weight with it. The latest ballot of a wallet replaces its earlier one. Governance steers signals and data sources only: never funds, fees or rewards.</p>
+    <pre><code>community weight of a signal = Σ (points × $POLARIS held) / Σ $POLARIS held
+today's North Score          = holders 45 · mint activity 30 · freshness 25, unverified source ×0.7</code></pre>
 
     <h2 id="contracts">Contracts</h2>
     <p>Every contract is a UUPS implementation behind a <code>PolarisProxy</code> (ERC-1967). Addresses never change across upgrades, and only the owner can authorise one. All sources are verified on the explorer.</p>

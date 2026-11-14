@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { replay, grade, trackRecord, stockClaim } from "./signals.mjs";
+import { replay, grade, trackRecord, stockClaim, riskOf, tally, badgeSvg } from "./signals.mjs";
 
 const topic = (a) => "0x" + a.padStart(64, "0");
 const A = (a) => "0x" + a.padStart(40, "0");
@@ -67,4 +67,28 @@ test("stock claims: canonical, imitation, and plain tokens", () => {
   assert.equal(stockClaim({ address: "0xcc", symbol: "P", name: "Pepe" }, stocks), null);
   assert.equal(stockClaim({ address: "0xcc", symbol: "P", name: "Everpure Stock Token" }, stocks).canonical, "0xbb");
   assert.equal(stockClaim({ address: "0xcc", symbol: "DOGE", name: "Doge" }, stocks), null);
+});
+
+test("portfolio risk: canonical stocks clear, rugs and imitations high, weak signals watch", () => {
+  assert.equal(riskOf({ stock: { ticker: "TSLA", official: true }, cluster: "high" }).level, "clear");
+  assert.equal(riskOf({ stock: { ticker: "TSLA", official: false }, score: 70 }).level, "high");
+  assert.deepEqual(riskOf({ score: 50, cluster: "clear", soldPct: 30 }), { level: "high", reasons: ["deployer sold 30%"] });
+  assert.equal(riskOf({ score: 12, cluster: "clear", soldPct: 0 }).level, "watch");
+  assert.equal(riskOf({ score: 55, cluster: "clear", soldPct: 0 }).level, "clear");
+  assert.equal(riskOf({ outcome: "faded" }).level, "watch");
+});
+
+test("governance tally weighs ballots by holdings and skips empty wallets", () => {
+  const S = ["a", "b"];
+  const t = tally([{ ballot: { a: 100, b: 0 } }, { ballot: { a: 0, b: 100 } }, { ballot: { a: 0, b: 100 } }], [3000, 1000, 0], S);
+  assert.deepEqual(t, { voters: 2, weight: 4000, mix: { a: 75, b: 25 } });
+  assert.deepEqual(tally([], [], S).mix, { a: 0, b: 0 });
+});
+
+test("the badge escapes chain strings and colours by score", () => {
+  const svg = badgeSvg({ symbol: `<x&"y>`, score: 72 });
+  assert.ok(!svg.includes(`<x&`) && svg.includes("&lt;x&amp;&quot;y&gt;"));
+  assert.ok(svg.includes("#00ff41") && svg.includes("NS 72"));
+  assert.ok(badgeSvg({ symbol: "ABC", score: 10 }).includes("#ff3d61"));
+  assert.ok(badgeSvg({ note: "not in the drift" }).includes("not in the drift"));
 });

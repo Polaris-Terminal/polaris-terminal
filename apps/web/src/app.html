@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Terminal · Polaris</title>
-<meta name="description" content="Polaris Terminal: Drift Radar, North Vaults, the Beacon and Orbit signals on Robinhood Chain.">
+<meta name="description" content="Polaris Terminal: Drift Radar, North Vaults, the Beacon, Orbit signals and the Constellation toolkit on Robinhood Chain.">
 <meta name="theme-color" content="#010603">
 <link rel="icon" href="/assets/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
@@ -32,6 +32,10 @@
     <a href="#deployer" data-tab="deployer"><kbd>5</kbd><span>deployer</span></a>
     <a href="#record" data-tab="record"><kbd>6</kbd><span>track_record</span><small class="num" id="nRecord"></small></a>
     <a href="#venues" data-tab="venues"><kbd>7</kbd><span>launchpads</span><small class="num" id="nVenues"></small></a>
+    <p class="label">Constellation · v3.0</p>
+    <a href="#rules" data-tab="rules"><kbd>8</kbd><span>custom_rules</span><small class="num" id="nRules"></small></a>
+    <a href="#portfolio" data-tab="portfolio"><kbd>9</kbd><span>portfolio_scan</span></a>
+    <a href="#council" data-tab="council"><kbd>0</kbd><span>council</span><small class="num" id="nCouncil"></small></a>
     <p class="label">Reference</p>
     <a href="/docs" data-icon="doc"><span>docs</span></a>
     <a data-explorer target="_blank" rel="noopener" data-icon="ext"><span>explorer</span></a>
@@ -62,7 +66,7 @@
     <form class="term-in" autocomplete="off"><label class="ps1" for="qcIn">$</label><input id="qcIn" spellcheck="false" autocapitalize="off" placeholder="type help · tab completes · ↑ ↓ history"></form>
     <div class="term-chips">
       <button class="chip" data-cmd="help">help</button><button class="chip" data-cmd="top 5">top 5</button><button class="chip" data-cmd="vaults">vaults</button>
-      <button class="chip" data-cmd="deposit 1000">deposit 1000</button><button class="chip" data-cmd="xp 7">xp 7</button><button class="chip" data-cmd="record">record</button><button class="chip" data-cmd="launchpads">launchpads</button><button class="chip" data-cmd="tour">tour</button><button class="chip" data-cmd="clear">clear</button>
+      <button class="chip" data-cmd="deposit 1000">deposit 1000</button><button class="chip" data-cmd="xp 7">xp 7</button><button class="chip" data-cmd="record">record</button><button class="chip" data-cmd="launchpads">launchpads</button><button class="chip" data-cmd="rule score>=40 holders>=10">rule score>=40</button><button class="chip" data-cmd="scan">scan</button><button class="chip" data-cmd="tour">tour</button><button class="chip" data-cmd="clear">clear</button>
     </div>
   </div>
 
@@ -92,6 +96,7 @@
         <div class="dbtns">
           <button class="btn btn-primary btn-sm" id="dWatch">Watch</button>
           <button class="btn btn-ghost btn-sm" id="dDep">Deployer</button>
+          <button class="btn btn-ghost btn-sm" id="dEmbed" title="Copy an embeddable North Score badge">Embed</button>
           <a class="btn btn-ghost btn-sm" id="dLink" target="_blank" rel="noopener">Explorer<svg class="i" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
         </div>
       </div>
@@ -100,6 +105,7 @@
       <div class="panel-head">
         <div><p class="label">The Drift</p><h2 class="h3">Every newborn token, ranked</h2></div>
         <div class="table-ctl">
+          <label class="pick"><span class="sr">Custom rule</span><select id="ruleSel" aria-label="Filter by a custom rule"><option value="">No rule</option></select></label>
           <label class="pick"><span class="sr">Launchpad</span><select id="padSel" aria-label="Filter by launchpad"><option value="">All launchpads</option></select></label>
           <div class="seg" id="sortSeg"><button data-s="score" class="on">Score</button><button data-s="age">Newest</button><button data-s="holders">Holders</button></div>
         </div>
@@ -298,10 +304,82 @@
     </div>
   </section>
 
+  <!-- ================= v3.0 constellation: custom rules ================= -->
+  <section class="view" id="v-rules" hidden>
+    <form class="panel dep-form" id="ruleForm" autocomplete="off">
+      <label class="field"><span class="label">New rule · score holders mints age · verified stock fake direct · ! negates</span>
+        <div class="field-in"><input id="ruleIn" spellcheck="false" placeholder="score>=60 holders>=25 age<6h !fake"><button class="btn btn-primary btn-sm">Add rule</button></div>
+      </label>
+    </form>
+    <div class="stats">
+      <div class="stat card"><span class="label">Rules</span><b class="num" id="ruCount">None yet</b><small class="dim">saved in this browser</small></div>
+      <div class="stat card"><span class="label">Matching now</span><b class="num" id="ruMatch">Write one</b><small class="dim">tokens passing the picked rule</small></div>
+      <div class="stat card"><span class="label">Radar filter</span><b class="num" id="ruOn">Off</b><small class="dim">pick a rule to filter the Drift</small></div>
+      <div class="stat card"><span class="label">Checks</span><b class="num">every 60s</b><small class="dim">new matches raise an alert</small></div>
+    </div>
+    <div class="orbit-layout">
+      <div class="panel table-panel">
+        <div class="panel-head"><div><p class="label">Custom rules</p><h2 class="h3">Your own filters over the Drift</h2></div><span class="label">matches</span></div>
+        <div class="wrows" id="ruRows"></div>
+      </div>
+      <div class="panel table-panel">
+        <div class="panel-head"><div><p class="label">Matches</p><h2 class="h3" id="ruHead">Pick a rule</h2></div></div>
+        <div class="wrows" id="ruHits"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= v3.0 constellation: portfolio scan ================= -->
+  <section class="view" id="v-portfolio" hidden>
+    <form class="panel dep-form" id="pfForm" autocomplete="off">
+      <label class="field"><span class="label">Wallet to scan</span>
+        <div class="field-in"><input id="pfIn" spellcheck="false" placeholder="0x… or connect a wallet"><button class="btn btn-primary btn-sm">Scan</button></div>
+      </label>
+    </form>
+    <div class="stats">
+      <div class="stat card"><span class="label">Holdings found</span><b class="num" id="pfN">Paste one</b><small class="dim" id="pfND">across every token Polaris tracks</small></div>
+      <div class="stat card"><span class="label">High risk</span><b class="num" id="pfHigh">Scan</b><small class="dim">rugs, imitations, linked supply</small></div>
+      <div class="stat card"><span class="label">Watch</span><b class="num" id="pfWatch">Scan</b><small class="dim">weak pull, clusters, deployer sells</small></div>
+      <div class="stat card"><span class="label">Clear</span><b class="num" id="pfClear">Scan</b><small class="dim">no red flag in its own history</small></div>
+    </div>
+    <div class="panel table-panel">
+      <div class="panel-head"><div><p class="label">Portfolio scan</p><h2 class="h3" id="pfHead">Risk profile of every holding</h2></div><a class="btn btn-ghost btn-sm" id="pfLink" target="_blank" rel="noopener">Explorer</a></div>
+      <div class="dtable-x">
+        <div class="drow thead label"><span>Token</span><span>Kind</span><span>Held</span><span>Score</span><span>Risk</span><span>Why</span></div>
+        <div id="pfRows"><p class="hint">Polaris checks the wallet's balance in every token born in the last 48 hours, every token graded in the last 30 days and every canonical stock token, in one multicall</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= v3.0 constellation: council (governance, API key) ================= -->
+  <section class="view" id="v-council" hidden>
+    <div class="stats">
+      <div class="stat card"><span class="label">Ballots</span><b class="num" id="gvN">Open</b><small class="dim" id="gvND">signed by $POLARIS holders</small></div>
+      <div class="stat card"><span class="label">$POLARIS behind them</span><b class="num" id="gvW">First vote</b><small class="dim">read live from each wallet</small></div>
+      <div class="stat card"><span class="label">Your ballot</span><b class="num" id="gvMe">Not cast</b><small class="dim" id="gvMeD">connect a wallet to vote</small></div>
+      <div class="stat card"><span class="label">API tier</span><b class="num" id="apiTier">Public</b><small class="dim" id="apiTierD">120 requests a minute</small></div>
+    </div>
+    <div class="orbit-layout">
+      <div class="panel table-panel">
+        <div class="panel-head"><div><p class="label">Signal governance</p><h2 class="h3">What should the score weigh?</h2></div><span class="label" id="gvSum">100 / 100</span></div>
+        <div class="gv" id="gvRows"></div>
+        <p class="label rec-note">spread 100 points · ballots weigh the $POLARIS the wallet holds now · signing is free and moves no funds</p>
+        <div class="dbtns"><button class="btn btn-primary btn-sm" id="gvSign">Sign ballot</button><button class="btn btn-ghost btn-sm" id="gvReset">Today's mix</button></div>
+      </div>
+      <div class="panel table-panel">
+        <div class="panel-head"><div><p class="label">Public API</p><h2 class="h3">Scores for your bot</h2></div><a class="btn btn-ghost btn-sm" href="/docs#api">Docs</a></div>
+        <p class="hint">Every endpoint the terminal uses is public under <b>/api/v1</b>. Without a key you get 120 requests a minute per IP. Sign once for a key; wallets holding 10,000 $POLARIS get 1,200.</p>
+        <div class="field-in api-key"><input id="apiKey" readonly placeholder="no key yet" aria-label="Your API key"><button class="btn btn-ghost btn-sm" id="apiCopy">Copy</button></div>
+        <pre class="code" id="apiEx"></pre>
+        <div class="dbtns"><button class="btn btn-primary btn-sm" id="apiGet">Get my API key</button></div>
+      </div>
+    </div>
+  </section>
+
   <footer class="status" aria-label="Status">
-    <span class="st-mode">polaris v2.0</span>
-    <nav class="st-tabs" aria-label="Views"><a href="#radar" data-tab="radar">1:radar</a><a href="#vaults" data-tab="vaults">2:vaults</a><a href="#beacon" data-tab="beacon">3:beacon</a><a href="#watch" data-tab="watch">4:watch</a><a href="#deployer" data-tab="deployer">5:deployer</a><a href="#record" data-tab="record">6:record</a><a href="#venues" data-tab="venues">7:pads</a></nav>
-    <span class="st-keys">/ shell · j/k select · 1-7 switch · w watch · ? tour</span>
+    <span class="st-mode">polaris v3.0</span>
+    <nav class="st-tabs" aria-label="Views"><a href="#radar" data-tab="radar">1:radar</a><a href="#vaults" data-tab="vaults">2:vaults</a><a href="#beacon" data-tab="beacon">3:beacon</a><a href="#watch" data-tab="watch">4:watch</a><a href="#deployer" data-tab="deployer">5:deployer</a><a href="#record" data-tab="record">6:record</a><a href="#venues" data-tab="venues">7:pads</a><a href="#rules" data-tab="rules">8:rules</a><a href="#portfolio" data-tab="portfolio">9:scan</a><a href="#council" data-tab="council">0:council</a></nav>
+    <span class="st-keys">/ shell · j/k select · 0-9 switch · w watch · ? tour</span>
     <span class="st-net"><span class="dot live" id="netDot"></span><span id="netName">Robinhood Chain</span></span>
     <span class="num" id="netBlock">syncing</span>
     <span class="num st-lat" id="stLat">rpc --</span>

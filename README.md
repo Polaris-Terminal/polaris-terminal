@@ -19,11 +19,19 @@ On Robinhood Chain a new token is born every minute. Everyone moves and almost n
 - **Track record**: every token graded a day after birth against the score it showed at one hour
 - **Holder tier**: 10,000 $POLARIS (read-only balance) unlocks 25 watch slots, 15s alerts and 48h history
 
+**v3.0 · Constellation** opens the signals up:
+
+- **Public API** under `/api/v1` with CORS, wallet-signed keys and per-tier rate limits (120 or 1,200 requests a minute)
+- **Custom rules**: Drift filters like `score>=60 holders>=25 age<6h !fake`, on the radar, as alerts and as an API parameter
+- **Portfolio scan**: one Multicall3 read of a wallet across every tracked token, each holding given a risk level
+- **Score widget**: an embeddable SVG North Score badge at `/api/v1/badge?a=<token>`
+- **Signal governance**: signed ballots spreading 100 points over six signals, weighted by the $POLARIS each wallet holds
+
 ## Monorepo
 
 ```
 apps/web            static site: HTML, CSS, vanilla JS modules, GSAP, Lenis, three.js
-apps/api            zero-dependency Node signal API (drift scanner, pools, Orbit signals, pulse, beacon board)
+apps/api            zero-dependency Node signal API (drift scanner, pools, Orbit signals, public API, pulse, beacon board)
 packages/contracts  Solidity, Hardhat 3, OpenZeppelin UUPS upgradeable contracts
 infra               systemd + Traefik templates and the deploy script
 ```

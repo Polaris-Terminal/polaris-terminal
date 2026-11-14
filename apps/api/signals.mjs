@@ -139,3 +139,48 @@ export function stockClaim(t, stocks) {
   if (hit && (sym.length >= 2 || named)) return { ticker: sym, official: false, canonical: hit.address || null };
   return named ? { ticker: sym || "?", official: false, canonical: null } : null;
 }
+
+// ---------- Constellation (v3.0) ----------
+// Portfolio Scan: what a holding's own signals say about it. h: { score, cluster, soldPct, outcome, stock }
+export function riskOf(h) {
+  if (h.stock?.official) return { level: "clear", reasons: ["canonical stock token"] };
+  const high = [
+    h.stock && `imitates ${h.stock.ticker}`,
+    h.outcome === "rugged" && "rugged in its first day",
+    h.cluster === "high" && "supply sits with linked wallets",
+    h.soldPct >= 25 && `deployer sold ${Math.round(h.soldPct)}%`,
+  ].filter(Boolean);
+  const watch = [
+    h.cluster === "watch" && "clustered holders",
+    h.soldPct >= 5 && h.soldPct < 25 && `deployer sold ${Math.round(h.soldPct)}%`,
+    h.score != null && h.score < 20 && "weak pull",
+    h.outcome === "faded" && "faded after a day",
+  ].filter(Boolean);
+  return { level: high.length ? "high" : watch.length ? "watch" : "clear", reasons: [...high, ...watch] };
+}
+
+// Signal Governance: every ballot weighed by the $POLARIS its wallet holds now.
+// votes: [{ ballot: { signal: points } }], weights: whole tokens per vote, same order.
+export function tally(votes, weights, signals) {
+  const mix = Object.fromEntries(signals.map((k) => [k, 0]));
+  let weight = 0, voters = 0;
+  votes.forEach((v, i) => {
+    if (!(weights[i] > 0)) return;
+    weight += weights[i]; voters++;
+    for (const k of signals) mix[k] += v.ballot[k] * weights[i];
+  });
+  for (const k of signals) mix[k] = weight ? Math.round((mix[k] / weight) * 10) / 10 : 0;
+  return { voters, weight, mix };
+}
+
+// Score Widget: a shields-style SVG badge. Every string is XML-escaped; symbols come from chain data.
+const xml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c]);
+export function badgeSvg({ symbol, score, note }) {
+  const left = "POLARIS", right = symbol ? `$${String(symbol).slice(0, 12)} ${score != null ? "NS " + score : note}` : note;
+  const color = score == null ? "#7a8f80" : score >= 60 ? "#00ff41" : score >= 30 ? "#ffd60a" : "#ff3d61";
+  const wl = 16 + left.length * 7 + 14, wr = right.length * 7 + 16, w = wl + wr;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="20" role="img" aria-label="${xml(left + ": " + right)}"><title>${xml(left + ": " + right)}</title>`
+    + `<rect width="${w}" height="20" rx="3" fill="#010603"/><rect x="${wl}" width="${wr}" height="20" rx="3" fill="${color}" fill-opacity="0.16"/><rect x="${wl}" width="${wr}" height="20" fill="none" stroke="${color}" stroke-opacity="0.5" rx="3"/>`
+    + `<path transform="translate(9 10) scale(0.36)" fill="#00ff41" d="M0,-15Q1.6,-1.6 12,0Q1.6,1.6 0,15Q-1.6,1.6 -12,0Q-1.6,-1.6 0,-15Z"/>`
+    + `<g font-family="ui-monospace,Menlo,Consolas,monospace" font-size="11" fill="#d6ffe0"><text x="18" y="14">${left}</text><text x="${wl + 8}" y="14" fill="${color}">${xml(right)}</text></g></svg>`;
+}

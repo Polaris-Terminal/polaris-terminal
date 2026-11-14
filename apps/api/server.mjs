@@ -4,9 +4,12 @@
 import http from "node:http";
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, createReadStream } from "node:fs";
 import { join, extname, resolve } from "node:path";
+import { randomBytes } from "node:crypto";
 import { northScore, hourly } from "./score.mjs";
 import { abiString, transferStats } from "./abi.mjs";
-import { replay, grade, trackRecord, stockClaim } from "./signals.mjs";
+import { replay, grade, trackRecord, stockClaim, riskOf, tally, badgeSvg } from "./signals.mjs";
+import { parseRule, matches, SIGNALS, keyText, ballotText } from "./rules.mjs";
+import { recoverAddress } from "./sig.mjs";
 
 const NETS = {
   robinhoodTestnet: { rpc: "https://rpc.testnet.chain.robinhood.com", explorer: "https://explorer.testnet.chain.robinhood.com" },
@@ -69,6 +72,8 @@ const state = {
   graded: {},   // address -> track record entry, kept 30 days after the token leaves the window
   labels: {},   // contract -> verified contract name, or null
   stocks: null, // { official: { address: ticker }, tickers: { TICKER: { name, address } }, at }
+  keys: {},     // v3.0 public API key -> wallet that signed for it
+  votes: {},    // v3.0 governance: wallet -> { ballot, at }
   ...(existsSync(STATE_FILE) ? JSON.parse(readFileSync(STATE_FILE, "utf8")) : {}),
 };
 const save = () => writeFileSync(STATE_FILE, JSON.stringify(state));
@@ -295,7 +300,11 @@ function deep(a, ttl = 90_000, lane = "fg") {
   lanes[lane] = run.catch(() => {});
   return run;
 }
-function pruneDeep() { for (const [a, c] of deepCache) if (Date.now() - c.at > 600_000) deepCache.delete(a); }
+function pruneDeep() {
+  for (const [a, c] of deepCache) if (Date.now() - c.at > 600_000) deepCache.delete(a);
+  for (const [k, b] of buckets) if (Date.now() >= b.reset) buckets.delete(k);
+  for (const [k, c] of portCache) if (Date.now() - c.at > 600_000) portCache.delete(k);
+}
 
 // ---------- track record: grade every token a day after birth, oldest first ----------
 async function gradeNext() {
@@ -311,18 +320,44 @@ async function gradeNext() {
   for (const [a, g] of Object.entries(state.graded)) if (now - g.bornAt > 30 * 864e5) delete state.graded[a];
 }
 
-// ---------- holder tier ----------
-const tierCache = new Map();
-async function tierOf(who) {
-  if (!who || !HOLDER_TOKEN) return "public";
-  const c = tierCache.get(who);
-  if (c && Date.now() - c.at < 300_000) return c.tier;
-  const [bal, dec] = await Promise.all([call(HOLDER_TOKEN, "0x70a08231" + who.slice(2).padStart(64, "0")), call(HOLDER_TOKEN, "0x313ce567")]).catch(() => ["0x", "0x"]);
-  const tier = bal.length >= 66 && BigInt(bal) >= BigInt(HOLDER_MIN) * 10n ** BigInt(dec.length >= 66 ? dec : 18) ? "holder" : "public";
-  tierCache.set(who, { at: Date.now(), tier });
-  return tier;
+// Multicall3 (deployed on both Robinhood chains): many eth_calls in one, each allowed to fail. Returns hex results, null on failure.
+const MULTICALL = "0xca11bde05977b3631167028862be2a173976ca11";
+const w32 = (n) => n.toString(16).padStart(64, "0");
+const balanceOfData = (who) => "70a08231" + who.slice(2).padStart(64, "0");
+async function multi(calls) {
+  const out = [];
+  for (let i = 0; i < calls.length; i += 300) {
+    const part = calls.slice(i, i + 300), n = part.length;
+    // aggregate3((address target, bool allowFailure, bytes callData)[]): every callData here is 36 bytes, so each tuple is 6 words
+    const r = await call(MULTICALL, "0x82ad56cb" + w32(32) + w32(n) + part.map((_, k) => w32(n * 32 + k * 192)).join("")
+      + part.map((c) => c.to.slice(2).padStart(64, "0") + w32(1) + w32(96) + w32(36) + c.data.padEnd(128, "0")).join(""));
+    const at = (pos) => Number(BigInt("0x" + r.slice(2 + pos * 2, 66 + pos * 2)));
+    const base = at(0) + 32;
+    for (let k = 0; k < n; k++) {
+      const t = base + at(base + k * 32), d = t + at(t + 32), len = at(d);
+      out.push(at(t) === 1 && len >= 32 ? "0x" + r.slice(2 + (d + 32) * 2, 2 + (d + 32 + len) * 2) : null);
+    }
+  }
+  return out;
 }
-const TIERS = { public: { watch: 5, historyH: 6, ttl: 60_000, poll: 60 }, holder: { watch: 25, historyH: 48, ttl: 15_000, poll: 15 } };
+
+// ---------- holder tier ----------
+const holdCache = new Map();
+let holderDec = null;
+// Whole $POLARIS in a wallet (read-only balance check, cached 5 minutes; a failed read counts as none)
+async function holding(who) {
+  if (!who || !HOLDER_TOKEN) return 0;
+  const c = holdCache.get(who);
+  if (c && Date.now() - c.at < 300_000) return c.n;
+  holderDec ??= await call(HOLDER_TOKEN, "0x313ce567").then((d) => BigInt(d.length >= 66 ? d : 18)).catch(() => null);
+  const bal = await call(HOLDER_TOKEN, "0x" + balanceOfData(who)).catch(() => "0x");
+  const n = bal.length >= 66 ? Number((BigInt(bal) * 100n) / 10n ** (holderDec ?? 18n)) / 100 : 0;
+  holdCache.set(who, { at: Date.now(), n });
+  return n;
+}
+const tierOf = async (who) => ((await holding(who)) >= HOLDER_MIN ? "holder" : "public");
+// rpm: public API requests per minute, per IP without a key or per key
+const TIERS = { public: { watch: 5, historyH: 6, ttl: 60_000, poll: 60, rpm: 120 }, holder: { watch: 25, historyH: 48, ttl: 15_000, poll: 15, rpm: 1200 } };
 
 async function refreshHolders() {
   const now = Date.now();
@@ -409,10 +444,10 @@ const scored = (t, now = Date.now()) => {
   return { ...t, ...northScore(t, now, WINDOW_MS), ageMin: Math.max(1, Math.round((now - t.bornAt) / 60e3)), launchpadLabel: label(t.launchpad), ...(claim && { stock: claim }) };
 };
 
-function drift(limit = 40, pad = null) {
+function drift(limit = 40, pad = null, rule = null) {
   const now = Date.now();
   const all = Object.values(state.tokens).filter((t) => listed(t.address)).map((t) => scored(t, now)).sort((a, b) => b.score - a.score);
-  const list = pad ? all.filter((t) => (pad === "direct" ? !t.launchpad : t.launchpad === pad)) : all;
+  const list = all.filter((t) => (!pad || (pad === "direct" ? !t.launchpad : t.launchpad === pad)) && (!rule || matches(rule, t)));
   return {
     window: WINDOW_MS / 3600e3,
     born24h: list.filter((t) => now - t.bornAt < 24 * 3600e3).length,
@@ -534,6 +569,89 @@ function record() {
   return { ...trackRecord(g), horizonH: 24, earlyAtH: 1, recent: g.sort((a, b) => b.bornAt - a.bornAt).slice(0, 30), pending: Object.values(state.tokens).filter((t) => !state.graded[t.address] && Date.now() - t.bornAt > 24.5 * 3600e3).length };
 }
 
+// ---------- Constellation (v3.0) ----------
+// Portfolio Scan: a wallet's balance in every token Polaris knows (the window, 30 days of grades, canonical stock tokens).
+const portCache = new Map();
+async function portfolio(q) {
+  const who = address(q.get("a")), c = portCache.get(who);
+  if (c && Date.now() - c.at < 60_000) return c.r;
+  const st = stocks(), now = Date.now();
+  const known = [...new Set([...Object.keys(state.tokens).filter(listed), ...Object.values(state.graded).filter((g) => !g.skip).map((g) => g.address), ...st.official.keys()])];
+  const bals = await multi(known.map((a) => ({ to: a, data: balanceOfData(who) })));
+  const held = known.map((a, i) => [a, bals[i] ? BigInt(bals[i]) : 0n]).filter(([, b]) => b > 0n);
+  const live = held.filter(([a]) => state.tokens[a]).map(([a, b]) => [a, b, Number((b * 10000n) / (BigInt(state.tokens[a].supply || 0) || 1n)) / 100]);
+  live.sort((x, y) => y[2] - x[2]);
+  const rows = [];
+  for (const [a, b, share] of live) {
+    const t = scored(state.tokens[a], now), r = rows.length < 8 ? await deep(a).catch(() => null) : null, g = state.graded[a];
+    const h = { address: a, symbol: t.symbol, name: t.name, kind: "drift", balance: Number(b * 1000n / 10n ** BigInt(t.decimals || 18)) / 1000, share,
+      score: t.score, ageMin: t.ageMin, cluster: r?.cluster?.level ?? null, soldPct: r?.creator?.soldPct ?? null, outcome: g && !g.skip ? g.outcome : null, stock: t.stock || null };
+    rows.push({ ...h, risk: riskOf(h) });
+  }
+  for (const [a, b] of held.filter(([x]) => !state.tokens[x])) {
+    const g = state.graded[a], official = st.official.get(a);
+    const h = official
+      ? { address: a, symbol: official, name: `${official} stock token`, kind: "stock", balance: Number(b / 10n ** 15n) / 1000, stock: { ticker: official, official: true } }
+      : { address: a, symbol: g.symbol, name: g.name, kind: "graded", score: g.early, outcome: g.outcome, soldPct: g.sold24h };
+    rows.push({ ...h, risk: riskOf(h) });
+  }
+  const order = { high: 0, watch: 1, clear: 2 };
+  rows.sort((x, y) => order[x.risk.level] - order[y.risk.level] || (y.share ?? -1) - (x.share ?? -1));
+  const count = (l) => rows.filter((h) => h.risk.level === l).length;
+  const r = { address: who, known: known.length, holdings: rows, high: count("high"), watch: count("watch"), clear: count("clear"), at: now };
+  portCache.set(who, { at: now, r });
+  return r;
+}
+
+// Signed requests: the wallet in the body must have signed `text` within the last 10 minutes.
+function signed(body, text) {
+  const who = address(body.wallet);
+  if (!(Math.abs(Date.now() - Date.parse(body.signed)) < 600e3)) throw bad("signature expired, sign again");
+  if (recoverAddress(text, body.sig) !== who) throw Object.assign(new Error("signature does not match the wallet"), { status: 401 });
+  return who;
+}
+
+// Public API key: one live key per wallet, re-issuing revokes the old one. The tier follows the wallet's $POLARIS.
+async function issueKey(body) {
+  const who = signed(body, keyText(address(body.wallet), body.signed));
+  for (const [k, w] of Object.entries(state.keys)) if (w === who) delete state.keys[k];
+  const key = "pk_" + randomBytes(18).toString("base64url");
+  state.keys[key] = who;
+  save();
+  const tier = await tierOf(who);
+  return { key, wallet: who, tier, rpm: TIERS[tier].rpm };
+}
+
+// Signal Governance: holders spread 100 points over the signals; ballots weigh as much $POLARIS as the wallet holds now.
+const NOW_MIX = { holders: 45, activity: 30, fresh: 25, source: 0, cluster: 0, deployer: 0 }; // North Score today; source is a ×0.7 discount, not points
+async function council(q) {
+  const voters = Object.keys(state.votes);
+  const bals = HOLDER_TOKEN ? await multi(voters.map((w) => ({ to: HOLDER_TOKEN, data: balanceOfData(w) }))) : [];
+  holderDec ??= HOLDER_TOKEN ? await call(HOLDER_TOKEN, "0x313ce567").then((d) => BigInt(d.length >= 66 ? d : 18)).catch(() => null) : null;
+  const weights = bals.map((b) => (b ? Number(BigInt(b) / 10n ** (holderDec ?? 18n)) : 0));
+  const me = q.get("a") && address(q.get("a"));
+  return { signals: SIGNALS, now: NOW_MIX, ...tally(voters.map((w) => state.votes[w]), weights, SIGNALS), ballots: voters.length, mine: me ? state.votes[me] || null : null };
+}
+async function vote(body) {
+  const who = address(body.wallet), b = body.ballot || {};
+  const ballot = Object.fromEntries(SIGNALS.map((k) => [k, b[k]]));
+  if (!SIGNALS.every((k) => Number.isInteger(ballot[k]) && ballot[k] >= 0 && ballot[k] <= 100) || SIGNALS.reduce((s, k) => s + ballot[k], 0) !== 100) throw bad(`a ballot spreads 100 whole points over ${SIGNALS.join(", ")}`);
+  signed(body, ballotText(who, ballot, body.signed));
+  holdCache.delete(who);
+  if (!((await holding(who)) > 0)) throw Object.assign(new Error("hold $POLARIS to vote"), { status: 403 });
+  state.votes[who] = { ballot, at: Date.now() };
+  save();
+  return council(new URLSearchParams({ a: who }));
+}
+
+// Score Widget: an SVG badge any site can embed with <img>.
+function badge(q) {
+  const a = address(q.get("a")), t = state.tokens[a], g = state.graded[a];
+  if (t && listed(a)) { const s = scored(t); return badgeSvg({ symbol: s.symbol, score: s.score }); }
+  if (g && !g.skip) return badgeSvg({ symbol: g.symbol, note: g.outcome });
+  return badgeSvg({ note: "outside the drift" });
+}
+
 function leaderboard() {
   const rows = Object.entries(state.stars).map(([address, s]) => ({ address, ...s })).sort((a, b) => b.xp - a.xp);
   return { observers: rows.length, pings: rows.reduce((n, r) => n + r.pings, 0), top: rows.slice(0, 25) };
@@ -542,7 +660,8 @@ function leaderboard() {
 const routes = {
   "/api/health": () => ({ ok: true, network: NETWORK, head: state.head, scanned: state.scanned, tracked: Object.keys(state.tokens).length, pools: Object.keys(state.pools).length, poolScanned: state.poolScanned, graded: Object.keys(state.graded).length }),
   "/api/pulse": () => ({ network: NETWORK, block: state.head, ...state.pulse, drift: { born24h: drift().born24h, born1h: drift().born1h } }),
-  "/api/drift": (q) => drift(Math.min(100, +q.get("limit") || 40), q.get("launchpad") === "direct" ? "direct" : q.get("launchpad") ? address(q.get("launchpad")) : null),
+  "/api/drift": (q) => drift(Math.min(100, +q.get("limit") || 40), q.get("launchpad") === "direct" ? "direct" : q.get("launchpad") ? address(q.get("launchpad")) : null,
+    q.get("rule") ? (() => { try { return parseRule(q.get("rule")); } catch (e) { throw bad(e.message); } })() : null),
   "/api/token": tokenView,
   "/api/alerts": alerts,
   "/api/deployer": deployerView,
@@ -552,21 +671,53 @@ const routes = {
   "/api/tier": async (q) => { const tier = await tierOf(address(q.get("a"))); return { tier, min: HOLDER_MIN, ...TIERS[tier] }; },
   "/api/beacon": () => leaderboard(),
   "/api/contracts": () => ({ network: NETWORK, explorer: EXPLORER, contracts: Object.values(state.contracts).filter((c) => listed(c.proxy)) }), // filtered on read: older state files still hold the token
+  "/api/portfolio": portfolio,
+  "/api/governance": council,
+  "/api/badge": badge,
 };
+const posts = { "/api/key": issueKey, "/api/vote": vote };
+
+// Rate limits: a fixed one-minute window per key, or per client IP without one.
+const buckets = new Map();
+function spend(id, rpm) {
+  const now = Date.now();
+  let b = buckets.get(id);
+  if (!b || now >= b.reset) buckets.set(id, (b = { n: 0, reset: now + 60e3 }));
+  b.n++;
+  return { "x-ratelimit-limit": rpm, "x-ratelimit-remaining": Math.max(0, rpm - b.n), "x-ratelimit-reset": Math.ceil(b.reset / 1000), over: b.n > rpm };
+}
+function readBody(req) {
+  return new Promise((ok, no) => {
+    let s = "";
+    req.on("data", (c) => { s += c; if (s.length > 4096) { no(bad("body too large")); req.destroy(); } });
+    req.on("end", () => { try { ok(JSON.parse(s || "{}")); } catch { no(bad("expected a JSON body")); } });
+  });
+}
+const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type, x-polaris-key", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-expose-headers": "x-ratelimit-limit, x-ratelimit-remaining, x-ratelimit-reset" };
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".woff2": "font/woff2", ".ico": "image/x-icon" };
 
 http.createServer((req, res) => {
   const url = new URL(req.url, "http://x");
-  const route = routes[url.pathname];
-  if (route) {
-    Promise.resolve().then(() => route(url.searchParams)).then((body) => {
-      res.writeHead(200, { "content-type": "application/json", "cache-control": "public, max-age=5" });
-      res.end(JSON.stringify(body));
-    }, (e) => {
-      res.writeHead(e.status || 500, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: e.message }));
-    });
+  const path = url.pathname.replace(/^\/api\/v1\//, "/api/"); // /api/v1/* is the stable public prefix
+  const route = req.method === "POST" ? posts[path] : routes[path];
+  if (route || (req.method === "OPTIONS" && (routes[path] || posts[path]))) {
+    if (req.method === "OPTIONS") return res.writeHead(204, CORS).end();
+    const fail = (e, extra = {}) => { res.writeHead(e.status || 500, { "content-type": "application/json", ...CORS, ...extra }); res.end(JSON.stringify({ error: e.message })); };
+    const key = req.headers["x-polaris-key"] || url.searchParams.get("key");
+    const owner = key ? state.keys[key] : null;
+    if (key && !owner) return fail(Object.assign(new Error("unknown API key"), { status: 401 }));
+    if (owner && !url.searchParams.has("holder")) url.searchParams.set("holder", owner); // a key carries its wallet's tier
+    Promise.resolve(owner ? tierOf(owner) : "public").then((tier) => {
+      // Traefik sets x-real-ip from the connection, so clients cannot pick their own bucket
+      const { over, ...limits } = spend(owner || req.headers["x-real-ip"] || req.socket.remoteAddress, TIERS[tier].rpm);
+      if (over) return fail(Object.assign(new Error(`rate limit: ${TIERS[tier].rpm} requests a minute on the ${tier} tier`), { status: 429 }), { ...limits, "retry-after": "60" });
+      return Promise.resolve(req.method === "POST" ? readBody(req).then(route) : route(url.searchParams)).then((body) => {
+        const svg = typeof body === "string";
+        res.writeHead(200, { "content-type": svg ? "image/svg+xml" : "application/json", "cache-control": svg ? "public, max-age=60" : req.method === "POST" ? "no-store" : "public, max-age=5", ...CORS, ...limits });
+        res.end(svg ? body : JSON.stringify(body));
+      });
+    }).catch(fail);
     return;
   }
   // Static site (Traefik in front handles TLS, compression and security headers).
